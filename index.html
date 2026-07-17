@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Doc's Edit Flow</title>
+    <title>Doc's Edit</title>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-   <style>
+    <style>
         :root {
             /* Cores Escuras e Profundas com Glow Esmeralda */
             --bg-primary: #05080c;
@@ -51,7 +51,7 @@
             -webkit-backdrop-filter: blur(12px);
             padding: 20px 40px;
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-start; /* Alinhado à esquerda agora que não tem o botão */
             align-items: center;
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
@@ -77,27 +77,6 @@
             background: linear-gradient(135deg, #fff 30%, #a7f3d0 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-        }
-
-        .btn-new-video {
-            background-color: var(--accent);
-            color: #05080c;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-weight: 700;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.15);
-        }
-
-        .btn-new-video:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.35);
-            background-color: #34d399;
         }
 
         /* Workspace Principal */
@@ -437,11 +416,8 @@
     <header>
         <div class="logo-area">
             <i class="fa-solid fa-clapperboard"></i>
-            <h1>Doc's Edit Flow</h1>
+            <h1>Doc's Edit</h1>
         </div>
-        <button class="btn-new-video" onclick="openModal('create')">
-            <i class="fa-solid fa-plus"></i> Novo Vídeo
-        </button>
     </header>
 
     <main>
@@ -488,10 +464,10 @@
         </div>
     </main>
 
-    <!-- Modal Novo Vídeo / Editar Vídeo -->
+    <!-- Modal Editar Vídeo (Fica aqui para a edição dos cards criados automaticamente) -->
     <div class="modal-overlay" id="video-modal">
         <div class="modal">
-            <h2 class="modal-title" id="modal-title-text">Adicionar Novo Vídeo</h2>
+            <h2 class="modal-title" id="modal-title-text">Editar Vídeo</h2>
             <form id="video-form" onsubmit="handleFormSubmit(event)">
                 <input type="hidden" id="video-id">
                 <div class="form-group">
@@ -512,7 +488,7 @@
                 </div>
                 <div class="modal-buttons">
                     <button type="button" class="btn-cancel" onclick="closeModal()">Cancelar</button>
-                    <button type="submit" class="btn-submit" id="btn-submit-text">Adicionar</button>
+                    <button type="submit" class="btn-submit" id="btn-submit-text">Salvar Alterações</button>
                 </div>
             </form>
         </div>
@@ -523,7 +499,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
     <script>
-        // Suas chaves de configuração do Firebase integradas com sucesso!
+        // Suas chaves de configuração do Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyDEejQS_JQMsd7D3-hXsC30UmYH1mJcHcw",
             authDomain: "doc-editor-c5af8.firebaseapp.com",
@@ -628,15 +604,8 @@
 
         function openModal(mode, id = null) {
             modal.classList.add('active');
-            if (mode === 'create') {
-                document.getElementById('modal-title-text').textContent = 'Adicionar Novo Vídeo';
-                document.getElementById('btn-submit-text').textContent = 'Adicionar';
-                document.getElementById('video-form').reset();
-                document.getElementById('video-id').value = '';
-                document.getElementById('final-link-group').style.display = 'none';
-            } else if (mode === 'edit') {
+            if (mode === 'edit') {
                 document.getElementById('modal-title-text').textContent = 'Editar Vídeo';
-                document.getElementById('btn-submit-text').textContent = 'Salvar Alterações';
                 document.getElementById('final-link-group').style.display = 'block';
 
                 const video = videosArray.find(v => v.id === id);
@@ -650,11 +619,12 @@
             }
         }
 
+        // Fechar modal
         function closeModal() {
             modal.classList.remove('active');
         }
 
-        // Salvar / Editar no Firebase Firestore
+        // Salvar alterações
         function handleFormSubmit(e) {
             e.preventDefault();
             const id = document.getElementById('video-id').value;
@@ -664,7 +634,6 @@
             const finalUrl = document.getElementById('video-final').value;
 
             if (id) {
-                // Editar existente
                 db.collection("videos").doc(id).update({
                     title,
                     driveUrl,
@@ -673,22 +642,10 @@
                 }).then(() => {
                     closeModal();
                 });
-            } else {
-                // Criar novo
-                db.collection("videos").add({
-                    title,
-                    driveUrl,
-                    desc,
-                    finalUrl: null,
-                    status: 'todo',
-                    createdAt: Date.now()
-                }).then(() => {
-                    closeModal();
-                });
             }
         }
 
-        // Deletar vídeo do painel
+        // Deletar vídeo
         function deleteVideo(id) {
             if (confirm("Quer mesmo apagar esse projeto do painel?")) {
                 db.collection("videos").doc(id).delete();
