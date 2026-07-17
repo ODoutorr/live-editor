@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doc's Edit Flow</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-primary: #0a0e12;
+            --bg-secondary: #111823;
+            --bg-card: #1b2431;
+            --accent: #10b981; /* Verde esmeralda estilo Slytherin */
+            --accent-glow: rgba(16, 185, 129, 0.2);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --border-color: #2d3748;
+            
+            --status-todo: #ef4444;
+            --status-progress: #3b82f6;
+            --status-done: #10b981;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        /* Header */
+        header {
+            background-color: var(--bg-secondary);
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-area i {
+            color: var(--accent);
+            font-size: 24px;
+            filter: drop-shadow(0 0 8px var(--accent-glow));
+        }
+
+        .logo-area h1 {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-new-video {
+            background-color: var(--accent);
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-new-video:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px var(--accent-glow);
+            opacity: 0.9;
+        }
+
+        /* Main Workspace */
+        main {
+            flex: 1;
+            padding: 40px;
+            display: flex;
+            gap: 25px;
+            overflow-x: auto;
+            align-items: flex-start;
+        }
+
+        /* Board Columns */
+        .column {
+            background-color: var(--bg-secondary);
+            flex: 1;
+            min-width: 320px;
+            max-width: 400px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            max-height: calc(100vh - 180px);
+        }
+
+        .column-header {
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .column-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .column-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .todo .column-dot { background-color: var(--status-todo); }
+        .progress .column-dot { background-color: var(--status-progress); }
+        .done .column-dot { background-color: var(--status-done); }
+
+        .card-count {
+            background-color: var(--border-color);
+            color: var(--text-muted);
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .card-list {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow-y: auto;
+            flex: 1;
+            min-height: 200px;
+        }
+
+        /* Video Card */
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            cursor: grab;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .card:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .card:active {
+            cursor: grabbing;
+        }
+
+        .card-title {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-main);
+        }
+
+        .card-desc {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 14px;
+            line-height: 1.4;
+            white-space: pre-wrap;
+        }
+
+        .card-links {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+
+        .link-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background-color: rgba(255,255,255,0.05);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            text-decoration: none;
+            color: var(--text-main);
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: background 0.2s;
+        }
+
+        .link-badge:hover {
+            background-color: rgba(255,255,255,0.1);
+        }
+
+        .link-badge.drive i {
+            color: #ffc107;
+        }
+
+        .link-badge.final i {
+            color: var(--accent);
+        }
+
+        .card-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: var(--text-muted);
+            border-top: 1px solid rgba(255,255,255,0.05);
+            padding-top: 10px;
+        }
+
+        .card-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-action {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 14px;
+            transition: color 0.2s;
+        }
+
+        .btn-action:hover {
+            color: var(--text-main);
+        }
+
+        .btn-action.delete:hover {
+            color: var(--status-todo);
+        }
+
+        /* Modal Overlay */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 1000;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            width: 100%;
+            max-width: 500px;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+        }
+
+        .modal-overlay.active .modal {
+            transform: scale(1);
+        }
+
+        .modal-title {
+            font-size: 18px;
+            margin-bottom: 20px;
+            font-weight: 700;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .form-group input, .form-group textarea {
+            width: 100%;
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+            color: var(--text-main);
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus, .form-group textarea:focus {
+            border-color: var(--accent);
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 30px;
+        }
+
+        .btn-cancel {
+            background: none;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .btn-submit {
+            background-color: var(--accent);
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-area">
+            <i class="fa-solid fa-clapperboard"></i>
+            <h1>Doc's Edit Flow</h1>
+        </div>
+        <button class="btn-new-video" onclick="openModal('create')">
+            <i class="fa-solid fa-plus"></i> Novo Vídeo
+        </button>
+    </header>
+
+    <main>
+        <!-- A FAZER -->
+        <div class="column todo">
+            <div class="column-header">
+                <div class="column-title">
+                    <div class="column-dot"></div>
+                    A Fazer
+                </div>
+                <span class="card-count" id="count-todo">0</span>
+            </div>
+            <div class="card-list" id="list-todo" ondragover="allowDrop(event)" ondrop="drop(event, 'todo')">
+                <!-- Cards dinâmicos entram aqui -->
+            </div>
+        </div>
+
+        <!-- EM EDIÇÃO -->
+        <div class="column progress">
+            <div class="column-header">
+                <div class="column-title">
+                    <div class="column-dot"></div>
+                    Em Edição
+                </div>
+                <span class="card-count" id="count-progress">0</span>
+            </div>
+            <div class="card-list" id="list-progress" ondragover="allowDrop(event)" ondrop="drop(event, 'progress')">
+                <!-- Cards dinâmicos entram aqui -->
+            </div>
+        </div>
+
+        <!-- CONCLUÍDO -->
+        <div class="column done">
+            <div class="column-header">
+                <div class="column-title">
+                    <div class="column-dot"></div>
+                    Concluído
+                </div>
+                <span class="card-count" id="count-done">0</span>
+            </div>
+            <div class="card-list" id="list-done" ondragover="allowDrop(event)" ondrop="drop(event, 'done')">
+                <!-- Cards dinâmicos entram aqui -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal Novo Vídeo / Editar Vídeo -->
+    <div class="modal-overlay" id="video-modal">
+        <div class="modal">
+            <h2 class="modal-title" id="modal-title-text">Adicionar Novo Vídeo</h2>
+            <form id="video-form" onsubmit="handleFormSubmit(event)">
+                <input type="hidden" id="video-id">
+                <div class="form-group">
+                    <label for="video-name">Título do Vídeo</label>
+                    <input type="text" id="video-name" placeholder="Ex: Gameplay DBD - Huntress" required>
+                </div>
+                <div class="form-group">
+                    <label for="video-drive">Link do Vídeo Bruto (Drive)</label>
+                    <input type="url" id="video-drive" placeholder="https://drive.google.com/..." required>
+                </div>
+                <div class="form-group">
+                    <label for="video-desc">Instruções de Edição</label>
+                    <textarea id="video-desc" rows="4" placeholder="Cortes aos 01:15, adicionar zoom, reações..." required></textarea>
+                </div>
+                <div class="form-group" id="final-link-group" style="display: none;">
+                    <label for="video-final">Link do Vídeo Finalizado</label>
+                    <input type="url" id="video-final" placeholder="https://drive.google.com/...">
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn-cancel" onclick="closeModal()">Cancelar</button>
+                    <button type="submit" class="btn-submit" id="btn-submit-text">Adicionar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs (Versão Compat) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+    <script>
+        // Suas chaves de configuração do Firebase integradas com sucesso!
+        const firebaseConfig = {
+            apiKey: "AIzaSyDEejQS_JQMsd7D3-hXsC30UmYH1mJcHcw",
+            authDomain: "doc-editor-c5af8.firebaseapp.com",
+            projectId: "doc-editor-c5af8",
+            storageBucket: "doc-editor-c5af8.firebasestorage.app",
+            messagingSenderId: "340152893660",
+            appId: "1:340152893660:web:794918522fff617c34b419",
+            measurementId: "G-6G2W3C86XS"
+        };
+
+        // Inicializa o Firebase e o Firestore
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // Armazenamento local dos cards
+        let videosArray = [];
+        let currentDragId = null;
+
+        // Escutar alterações do Firestore em tempo real
+        db.collection("videos").orderBy("createdAt", "desc").onSnapshot((snapshot) => {
+            videosArray = [];
+            snapshot.forEach((doc) => {
+                videosArray.push({ id: doc.id, ...doc.data() });
+            });
+            renderBoard();
+        });
+
+        // Renderizar elementos na tela
+        function renderBoard() {
+            const columns = {
+                todo: document.getElementById('list-todo'),
+                progress: document.getElementById('list-progress'),
+                done: document.getElementById('list-done')
+            };
+
+            // Limpa as colunas
+            Object.values(columns).forEach(col => col.innerHTML = '');
+
+            const counts = { todo: 0, progress: 0, done: 0 };
+
+            videosArray.forEach(video => {
+                counts[video.status]++;
+
+                const cardHTML = `
+                    <div class="card" draggable="true" ondragstart="dragStart('${video.id}')" id="card-${video.id}">
+                        <h3 class="card-title">${video.title}</h3>
+                        <p class="card-desc">${video.desc}</p>
+                        <div class="card-links">
+                            <a href="${video.driveUrl}" target="_blank" class="link-badge drive">
+                                <i class="fa-brands fa-google-drive"></i> Baixar Bruto
+                            </a>
+                            ${video.finalUrl ? `
+                                <a href="${video.finalUrl}" target="_blank" class="link-badge final">
+                                    <i class="fa-solid fa-circle-check"></i> Vídeo Pronto
+                                </a>
+                            ` : ''}
+                        </div>
+                        <div class="card-footer">
+                            <span>Adicionado: ${new Date(video.createdAt).toLocaleDateString()}</span>
+                            <div class="card-actions">
+                                <button class="btn-action edit" onclick="openModal('edit', '${video.id}')">
+                                    <i class="fa-solid fa-pen"></i>
+                                </button>
+                                <button class="btn-action delete" onclick="deleteVideo('${video.id}')">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                columns[video.status].insertAdjacentHTML('beforeend', cardHTML);
+            });
+
+            // Atualiza contadores
+            document.getElementById('count-todo').textContent = counts.todo;
+            document.getElementById('count-progress').textContent = counts.progress;
+            document.getElementById('count-done').textContent = counts.done;
+        }
+
+        // Funções de Drag & Drop
+        function dragStart(id) {
+            currentDragId = id;
+        }
+
+        function allowDrop(ev) {
+            ev.preventDefault();
+        }
+
+        function drop(ev, newStatus) {
+            ev.preventDefault();
+            if (currentDragId) {
+                db.collection("videos").doc(currentDragId).update({
+                    status: newStatus
+                }).catch(err => console.error("Erro ao mover card:", err));
+                currentDragId = null;
+            }
+        }
+
+        // Modais e Formulários
+        const modal = document.getElementById('video-modal');
+
+        function openModal(mode, id = null) {
+            modal.classList.add('active');
+            if (mode === 'create') {
+                document.getElementById('modal-title-text').textContent = 'Adicionar Novo Vídeo';
+                document.getElementById('btn-submit-text').textContent = 'Adicionar';
+                document.getElementById('video-form').reset();
+                document.getElementById('video-id').value = '';
+                document.getElementById('final-link-group').style.display = 'none';
+            } else if (mode === 'edit') {
+                document.getElementById('modal-title-text').textContent = 'Editar Vídeo';
+                document.getElementById('btn-submit-text').textContent = 'Salvar Alterações';
+                document.getElementById('final-link-group').style.display = 'block';
+
+                const video = videosArray.find(v => v.id === id);
+                if (video) {
+                    document.getElementById('video-id').value = video.id;
+                    document.getElementById('video-name').value = video.title;
+                    document.getElementById('video-drive').value = video.driveUrl;
+                    document.getElementById('video-desc').value = video.desc;
+                    document.getElementById('video-final').value = video.finalUrl || '';
+                }
+            }
+        }
+
+        function closeModal() {
+            modal.classList.remove('active');
+        }
+
+        // Salvar / Editar no Firebase Firestore
+        function handleFormSubmit(e) {
+            e.preventDefault();
+            const id = document.getElementById('video-id').value;
+            const title = document.getElementById('video-name').value;
+            const driveUrl = document.getElementById('video-drive').value;
+            const desc = document.getElementById('video-desc').value;
+            const finalUrl = document.getElementById('video-final').value;
+
+            if (id) {
+                // Editar existente
+                db.collection("videos").doc(id).update({
+                    title,
+                    driveUrl,
+                    desc,
+                    finalUrl: finalUrl || null
+                }).then(() => {
+                    closeModal();
+                });
+            } else {
+                // Criar novo
+                db.collection("videos").add({
+                    title,
+                    driveUrl,
+                    desc,
+                    finalUrl: null,
+                    status: 'todo',
+                    createdAt: Date.now()
+                }).then(() => {
+                    closeModal();
+                });
+            }
+        }
+
+        // Deletar vídeo do painel
+        function deleteVideo(id) {
+            if (confirm("Quer mesmo apagar esse projeto do painel?")) {
+                db.collection("videos").doc(id).delete();
+            }
+        }
+    </script>
+</body>
+</html>
