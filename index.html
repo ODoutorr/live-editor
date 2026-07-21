@@ -51,7 +51,7 @@
             -webkit-backdrop-filter: blur(12px);
             padding: 20px 40px;
             display: flex;
-            justify-content: flex-start;
+            justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
@@ -77,6 +77,100 @@
             background: linear-gradient(135deg, #fff 30%, #a7f3d0 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+        }
+
+        /* Widget de Meta Mensal no Header */
+        .monthly-tracker {
+            background-color: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            position: relative;
+        }
+
+        .tracker-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .tracker-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            font-weight: 700;
+            color: var(--text-muted);
+            letter-spacing: 0.6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .tracker-title i {
+            color: #f59e0b;
+        }
+
+        .tracker-count {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .tracker-count span {
+            color: var(--accent);
+        }
+
+        .progress-bar-bg {
+            width: 120px;
+            height: 6px;
+            background-color: rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background-color: var(--accent);
+            width: 0%;
+            transition: width 0.3s ease;
+            box-shadow: 0 0 8px var(--accent);
+        }
+
+        .tracker-alert {
+            font-size: 11px;
+            font-weight: 600;
+            color: #fbbf24;
+            display: none;
+            margin-top: 2px;
+        }
+
+        .tracker-controls {
+            display: flex;
+            gap: 6px;
+        }
+
+        .btn-tracker {
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-main);
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-tracker:hover {
+            background-color: rgba(16, 185, 129, 0.2);
+            border-color: var(--accent);
+            color: var(--accent);
         }
 
         /* Workspace Principal */
@@ -368,7 +462,7 @@
 
         .modal-buttons {
             display: flex;
-            justify-content: space-between; /* Mudado para separar o botão de excluir dos de salvar */
+            justify-content: space-between;
             align-items: center;
             margin-top: 35px;
         }
@@ -434,6 +528,28 @@
             <i class="fa-solid fa-clapperboard"></i>
             <h1>Doc's Edit</h1>
         </div>
+
+        <!-- Widget de Meta Mensal no topo direito -->
+        <div class="monthly-tracker">
+            <div class="tracker-info">
+                <div class="tracker-title">
+                    Meta do Mês <i class="fa-solid fa-lock" title="Protegido por Criptografia Hash"></i>
+                </div>
+                <div class="tracker-count"><span id="tracker-current">0</span> / 8 Reels</div>
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" id="tracker-bar"></div>
+                </div>
+                <div class="tracker-alert" id="tracker-alert-msg"></div>
+            </div>
+            <div class="tracker-controls">
+                <button class="btn-tracker" onclick="changeTrackerWithPass(-1)">
+                    <i class="fa-solid fa-minus"></i>
+                </button>
+                <button class="btn-tracker" onclick="changeTrackerWithPass(1)">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
+            </div>
+        </div>
     </header>
 
     <main>
@@ -480,7 +596,7 @@
         </div>
     </main>
 
-    <!-- Modal Editar Vídeo (Fica aqui para a edição dos cards criados automaticamente) -->
+    <!-- Modal Editar Vídeo -->
     <div class="modal-overlay" id="video-modal">
         <div class="modal">
             <h2 class="modal-title" id="modal-title-text">Editar Vídeo</h2>
@@ -503,7 +619,6 @@
                     <input type="url" id="video-final" placeholder="https://drive.google.com/...">
                 </div>
                 <div class="modal-buttons">
-                    <!-- Botão de Deletar seguro e isolado no canto esquerdo -->
                     <button type="button" class="btn-delete-modal" onclick="deleteVideoFromModal()">
                         <i class="fa-solid fa-trash-can"></i> Excluir
                     </button>
@@ -540,7 +655,91 @@
         let videosArray = [];
         let currentDragId = null;
 
-        // Escutar alterações do Firestore em tempo real
+        // HASH CRIPTOGRÁFICO DA SENHA (Padrão atual: Hash da senha '1234')
+        const HASH_SENHA_DOC = "7a5df5ffa0dec2228d90b8d0a0f1b0767b748b0a41314c123075b8289e4e053f";
+
+        // Função para calcular o Hash SHA-256 no navegador
+        async function sha256(str) {
+            const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+            return Array.prototype.map.call(new Uint8Array(buf), x => (('0' + x.toString(16)).slice(-2))).join('');
+        }
+
+        // --- SISTEMA DE META MENSAL (SINCRONIZADO VIA FIREBASE) ---
+        const now = new Date();
+        const currentMonthKey = now.getFullYear() + "-" + (now.getMonth() + 1);
+        const trackerRef = db.collection("settings").doc("monthly_tracker");
+
+        // Escutar a meta mensal em tempo real
+        trackerRef.onSnapshot((doc) => {
+            if (doc.exists) {
+                const data = doc.data();
+                if (data.month !== currentMonthKey) {
+                    resetTracker();
+                } else {
+                    updateTrackerUI(data.count || 0);
+                }
+            } else {
+                resetTracker();
+            }
+        });
+
+        function resetTracker() {
+            trackerRef.set({
+                count: 0,
+                month: currentMonthKey
+            });
+        }
+
+        // Alterar contador validando a senha via Hash criptográfico
+        async function changeTrackerWithPass(delta) {
+            const senhaDigitada = prompt("Apenas o Doc pode alterar o contador. Digite a senha:");
+            if (senhaDigitada !== null) {
+                const hashInput = await sha256(senhaDigitada);
+                if (hashInput === HASH_SENHA_DOC) {
+                    trackerRef.get().then((doc) => {
+                        let currentCount = 0;
+                        if (doc.exists && doc.data().month === currentMonthKey) {
+                            currentCount = doc.data().count || 0;
+                        }
+                        let newCount = Math.max(0, Math.min(8, currentCount + delta));
+                        trackerRef.set({
+                            count: newCount,
+                            month: currentMonthKey
+                        });
+                    });
+                } else {
+                    alert("Senha incorreta!");
+                }
+            }
+        }
+
+        function updateTrackerUI(count) {
+            document.getElementById('tracker-current').textContent = count;
+            const percentage = (count / 8) * 100;
+            document.getElementById('tracker-bar').style.width = percentage + "%";
+
+            // Lógica de alerta de fim de mês
+            const today = new Date();
+            const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            const daysRemaining = lastDayOfMonth.getDate() - today.getDate();
+            const videosRemaining = 8 - count;
+
+            const alertElement = document.getElementById('tracker-alert-msg');
+
+            if (videosRemaining <= 0) {
+                alertElement.style.display = "block";
+                alertElement.style.color = "#34d399"; // Verde
+                alertElement.textContent = "🎉 Meta do mês concluída!";
+            } else if (daysRemaining <= 7) { // Faltando 7 dias ou menos para virar o mês
+                alertElement.style.display = "block";
+                alertElement.style.color = "#fbbf24"; // Amarelo/Laranja
+                alertElement.textContent = `⚠️ Faltam ${daysRemaining} dias e ${videosRemaining} vídeo(s) para fechar o mês!`;
+            } else {
+                alertElement.style.display = "none";
+            }
+        }
+
+        // --- SISTEMA DE CARDS ---
         db.collection("videos").orderBy("createdAt", "desc").onSnapshot((snapshot) => {
             videosArray = [];
             snapshot.forEach((doc) => {
@@ -549,7 +748,6 @@
             renderBoard();
         });
 
-        // Renderizar elementos na tela
         function renderBoard() {
             const columns = {
                 todo: document.getElementById('list-todo'),
@@ -557,7 +755,6 @@
                 done: document.getElementById('list-done')
             };
 
-            // Limpa as colunas
             Object.values(columns).forEach(col => col.innerHTML = '');
 
             const counts = { todo: 0, progress: 0, done: 0 };
@@ -593,13 +790,11 @@
                 columns[video.status].insertAdjacentHTML('beforeend', cardHTML);
             });
 
-            // Atualiza contadores
             document.getElementById('count-todo').textContent = counts.todo;
             document.getElementById('count-progress').textContent = counts.progress;
             document.getElementById('count-done').textContent = counts.done;
         }
 
-        // Funções de Drag & Drop
         function dragStart(id) {
             currentDragId = id;
         }
@@ -608,7 +803,6 @@
             ev.preventDefault();
         }
 
-        // Mover card
         function drop(ev, newStatus) {
             ev.preventDefault();
             if (currentDragId) {
@@ -619,7 +813,6 @@
             }
         }
 
-        // Modais e Formulários
         const modal = document.getElementById('video-modal');
 
         function openModal(mode, id = null) {
@@ -639,12 +832,10 @@
             }
         }
 
-        // Fechar modal
         function closeModal() {
             modal.classList.remove('active');
         }
 
-        // Salvar alterações
         function handleFormSubmit(e) {
             e.preventDefault();
             const id = document.getElementById('video-id').value;
@@ -665,7 +856,6 @@
             }
         }
 
-        // Função de Excluir acionada de forma segura por dentro do modal
         function deleteVideoFromModal() {
             const id = document.getElementById('video-id').value;
             if (id && confirm("Quer mesmo apagar esse projeto do painel?")) {
