@@ -110,7 +110,7 @@
         }
 
         .tracker-title i {
-            color: #f59e0b;
+            color: #5865F2; /* Cor oficial do Discord */
         }
 
         .tracker-count {
@@ -533,7 +533,7 @@
         <div class="monthly-tracker">
             <div class="tracker-info">
                 <div class="tracker-title">
-                    Meta do Mês <i class="fa-solid fa-lock" title="Protegido por Criptografia Hash"></i>
+                    Meta do Mês <i class="fa-brands fa-discord" title="Notifica no Discord a cada alteração"></i>
                 </div>
                 <div class="tracker-count"><span id="tracker-current">0</span> / 8 Reels</div>
                 <div class="progress-bar-bg">
@@ -542,10 +542,10 @@
                 <div class="tracker-alert" id="tracker-alert-msg"></div>
             </div>
             <div class="tracker-controls">
-                <button class="btn-tracker" onclick="changeTrackerWithPass(-1)">
+                <button class="btn-tracker" onclick="changeTrackerCount(-1)">
                     <i class="fa-solid fa-minus"></i>
                 </button>
-                <button class="btn-tracker" onclick="changeTrackerWithPass(1)">
+                <button class="btn-tracker" onclick="changeTrackerCount(1)">
                     <i class="fa-solid fa-plus"></i>
                 </button>
             </div>
@@ -651,18 +651,12 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
+        // 🔗 COLE A URL DO SEU WEBHOOK DO DISCORD ABAIXO DENTRO DAS ASPAS:
+        const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1529245113769787463/wjRHz40oJxbJd8aGnF4GxI32e9SoQP7tWM0otUgWraA-aMSjG4NcywE60fn9SBvpv754";
+
         // Armazenamento local dos cards
         let videosArray = [];
         let currentDragId = null;
-
-        // HASH CRIPTOGRÁFICO DA SENHA (Padrão atual: Hash da senha '1234')
-        const HASH_SENHA_DOC = "7a5df5ffa0dec2228d90b8d0a0f1b0767b748b0a41314c123075b8289e4e053f";
-
-        // Função para calcular o Hash SHA-256 no navegador
-        async function sha256(str) {
-            const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
-            return Array.prototype.map.call(new Uint8Array(buf), x => (('0' + x.toString(16)).slice(-2))).join('');
-        }
 
         // --- SISTEMA DE META MENSAL (SINCRONIZADO VIA FIREBASE) ---
         const now = new Date();
@@ -690,27 +684,54 @@
             });
         }
 
-        // Alterar contador validando a senha via Hash criptográfico
-        async function changeTrackerWithPass(delta) {
-            const senhaDigitada = prompt("Apenas o Doc pode alterar o contador. Digite a senha:");
-            if (senhaDigitada !== null) {
-                const hashInput = await sha256(senhaDigitada);
-                if (hashInput === HASH_SENHA_DOC) {
-                    trackerRef.get().then((doc) => {
-                        let currentCount = 0;
-                        if (doc.exists && doc.data().month === currentMonthKey) {
-                            currentCount = doc.data().count || 0;
-                        }
-                        let newCount = Math.max(0, Math.min(8, currentCount + delta));
-                        trackerRef.set({
-                            count: newCount,
-                            month: currentMonthKey
-                        });
-                    });
-                } else {
-                    alert("Senha incorreta!");
+        // Alterar contador e notificar no Discord
+        function changeTrackerCount(delta) {
+            trackerRef.get().then((doc) => {
+                let currentCount = 0;
+                if (doc.exists && doc.data().month === currentMonthKey) {
+                    currentCount = doc.data().count || 0;
                 }
-            }
+                let newCount = Math.max(0, Math.min(8, currentCount + delta));
+                
+                if (newCount !== currentCount) {
+                    trackerRef.set({
+                        count: newCount,
+                        month: currentMonthKey
+                    }).then(() => {
+                        sendDiscordNotification(currentCount, newCount);
+                    });
+                }
+            });
+        }
+
+        // Enviar Webhook bonitinho para o Discord
+        function sendDiscordNotification(oldCount, newCount) {
+            if (!DISCORD_WEBHOOK_URL || DISCORD_WEBHOOK_URL.includes("COLE_SEU_WEBHOOK")) return;
+
+            const timeString = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+            const isIncrease = newCount > oldCount;
+            
+            const payload = {
+                username: "Painel Doc's Edit",
+                avatar_url: "https://cdn-icons-png.flaticon.com/512/3172/3172432.png",
+                embeds: [{
+                    title: isIncrease ? "📈 Meta Mensal Atualizada (+1 Vídeo)" : "📉 Meta Mensal Revertida (-1 Vídeo)",
+                    description: `A contagem de vídeos entregues do mês foi alterada no painel!`,
+                    color: isIncrease ? 65280 : 15548997, // Verde ou Vermelho
+                    fields: [
+                        { name: "Progresso Atual", value: `**${newCount} / 8 Reels**`, inline: true },
+                        { name: "Alteração", value: `${oldCount} ➔ **${newCount}**`, inline: true },
+                        { name: "Data / Horário", value: `${timeString}`, inline: false }
+                    ],
+                    footer: { text: "Doc's Edit Flow System" }
+                }]
+            };
+
+            fetch(DISCORD_WEBHOOK_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            }).catch(err => console.error("Erro ao enviar webhook pro Discord:", err));
         }
 
         function updateTrackerUI(count) {
