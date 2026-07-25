@@ -139,17 +139,10 @@
             box-shadow: 0 0 8px var(--accent);
         }
 
-        .tracker-alert {
-            font-size: 11px;
-            font-weight: 600;
-            color: #fbbf24;
-            display: none;
-            margin-top: 2px;
-        }
-
         .tracker-controls {
             display: flex;
             gap: 6px;
+            align-items: center;
         }
 
         .btn-tracker {
@@ -171,6 +164,24 @@
             background-color: rgba(16, 185, 129, 0.2);
             border-color: var(--accent);
             color: var(--accent);
+        }
+
+        .btn-add-month {
+            background-color: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: var(--accent);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-add-month:hover {
+            background-color: var(--accent);
+            color: #05080c;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
         }
 
         /* Workspace Principal */
@@ -287,12 +298,18 @@
             letter-spacing: 0.3px;
         }
 
+        /* --- DESTAQUE AMARELO PARA OS COMENTÁRIOS DA DESCRIÇÃO --- */
         .card-desc {
             font-size: 13.5px;
-            color: var(--text-muted);
+            color: #f59e0b; /* Amarelo/Dourado chamativo */
+            background-color: rgba(245, 158, 11, 0.08); /* Fundo sutil */
+            border-left: 3px solid #f59e0b; /* Linha de destaque na esquerda */
+            padding: 8px 12px;
+            border-radius: 4px;
             margin-bottom: 16px;
             line-height: 1.5;
             white-space: pre-wrap;
+            font-style: italic;
         }
 
         .card-links {
@@ -533,20 +550,22 @@
         <div class="monthly-tracker">
             <div class="tracker-info">
                 <div class="tracker-title">
-                    Meta do Mês <i class="fa-brands fa-discord" title="Notifica no Discord a cada alteração"></i>
+                    Saldo Acumulado <i class="fa-brands fa-discord" title="Notifica no Discord a cada alteração"></i>
                 </div>
-                <div class="tracker-count"><span id="tracker-current">0</span> / 8 Reels</div>
+                <div class="tracker-count"><span id="tracker-current">0</span> / <span id="tracker-total">8</span> Reels</div>
                 <div class="progress-bar-bg">
                     <div class="progress-bar-fill" id="tracker-bar"></div>
                 </div>
-                <div class="tracker-alert" id="tracker-alert-msg"></div>
             </div>
             <div class="tracker-controls">
-                <button class="btn-tracker" onclick="changeTrackerCount(-1)">
+                <button class="btn-tracker" onclick="changeTrackerCount(-1)" title="Remover 1 entregue">
                     <i class="fa-solid fa-minus"></i>
                 </button>
-                <button class="btn-tracker" onclick="changeTrackerCount(1)">
+                <button class="btn-tracker" onclick="changeTrackerCount(1)" title="Marcar 1 entregue">
                     <i class="fa-solid fa-plus"></i>
+                </button>
+                <button class="btn-add-month" onclick="addNewMonthQuota()" title="Novo Mês: Adiciona +8 vídeos na meta">
+                    +8
                 </button>
             </div>
         </div>
@@ -652,60 +671,63 @@
         const db = firebase.firestore();
 
         // 🔗 COLE A URL DO SEU WEBHOOK DO DISCORD ABAIXO DENTRO DAS ASPAS:
-        const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1529245113769787463/wjRHz40oJxbJd8aGnF4GxI32e9SoQP7tWM0otUgWraA-aMSjG4NcywE60fn9SBvpv754";
+        const DISCORD_WEBHOOK_URL = "COLE_SEU_WEBHOOK_DO_DISCORD_AQUI";
 
         // Armazenamento local dos cards
         let videosArray = [];
         let currentDragId = null;
 
-        // --- SISTEMA DE META MENSAL (SINCRONIZADO VIA FIREBASE) ---
-        const now = new Date();
-        const currentMonthKey = now.getFullYear() + "-" + (now.getMonth() + 1);
-        const trackerRef = db.collection("settings").doc("monthly_tracker");
+        // --- SISTEMA DE META ACUMULADA (SEM RESET AUTOMÁTICO) ---
+        const trackerRef = db.collection("settings").doc("accumulated_tracker");
 
-        // Escutar a meta mensal em tempo real
+        // Escutar a meta acumulada em tempo real
         trackerRef.onSnapshot((doc) => {
             if (doc.exists) {
                 const data = doc.data();
-                if (data.month !== currentMonthKey) {
-                    resetTracker();
-                } else {
-                    updateTrackerUI(data.count || 0);
-                }
+                updateTrackerUI(data.count || 0, data.total || 8);
             } else {
-                resetTracker();
+                // Primeira inicialização
+                trackerRef.set({ count: 0, total: 8 });
             }
         });
 
-        function resetTracker() {
-            trackerRef.set({
-                count: 0,
-                month: currentMonthKey
-            });
-        }
-
-        // Alterar contador e notificar no Discord
+        // Alterar vídeos entregues
         function changeTrackerCount(delta) {
             trackerRef.get().then((doc) => {
                 let currentCount = 0;
-                if (doc.exists && doc.data().month === currentMonthKey) {
+                let currentTotal = 8;
+                if (doc.exists) {
                     currentCount = doc.data().count || 0;
+                    currentTotal = doc.data().total || 8;
                 }
-                let newCount = Math.max(0, Math.min(8, currentCount + delta));
+                let newCount = Math.max(0, Math.min(currentTotal, currentCount + delta));
                 
                 if (newCount !== currentCount) {
-                    trackerRef.set({
-                        count: newCount,
-                        month: currentMonthKey
-                    }).then(() => {
-                        sendDiscordNotification(currentCount, newCount);
+                    trackerRef.update({ count: newCount }).then(() => {
+                        sendDiscordNotification(currentCount, newCount, currentTotal);
                     });
                 }
             });
         }
 
-        // Enviar Webhook bonitinho para o Discord
-        function sendDiscordNotification(oldCount, newCount) {
+        // Botão Novo Mês (+8 Vídeos na Meta)
+        function addNewMonthQuota() {
+            if (confirm("Adicionar +8 vídeos na meta do novo mês?")) {
+                trackerRef.get().then((doc) => {
+                    let currentTotal = 8;
+                    if (doc.exists) {
+                        currentTotal = doc.data().total || 8;
+                    }
+                    let newTotal = currentTotal + 8;
+                    trackerRef.update({ total: newTotal }).then(() => {
+                        sendDiscordQuotaNotification(currentTotal, newTotal);
+                    });
+                });
+            }
+        }
+
+        // Notificação de alteração de entrega no Discord
+        function sendDiscordNotification(oldCount, newCount, total) {
             if (!DISCORD_WEBHOOK_URL || DISCORD_WEBHOOK_URL.includes("COLE_SEU_WEBHOOK")) return;
 
             const timeString = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
@@ -715,11 +737,11 @@
                 username: "Painel Doc's Edit",
                 avatar_url: "https://cdn-icons-png.flaticon.com/512/3172/3172432.png",
                 embeds: [{
-                    title: isIncrease ? "📈 Meta Mensal Atualizada (+1 Vídeo)" : "📉 Meta Mensal Revertida (-1 Vídeo)",
-                    description: `A contagem de vídeos entregues do mês foi alterada no painel!`,
-                    color: isIncrease ? 65280 : 15548997, // Verde ou Vermelho
+                    title: isIncrease ? "📈 +1 Vídeo Entregue" : "📉 -1 Vídeo Revertido",
+                    description: `O progresso de vídeos foi atualizado no painel!`,
+                    color: isIncrease ? 65280 : 15548997,
                     fields: [
-                        { name: "Progresso Atual", value: `**${newCount} / 8 Reels**`, inline: true },
+                        { name: "Saldo do Contrato", value: `**${newCount} / ${total} Reels**`, inline: true },
                         { name: "Alteração", value: `${oldCount} ➔ **${newCount}**`, inline: true },
                         { name: "Data / Horário", value: `${timeString}`, inline: false }
                     ],
@@ -731,33 +753,42 @@
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
-            }).catch(err => console.error("Erro ao enviar webhook pro Discord:", err));
+            }).catch(err => console.error("Erro no webhook:", err));
         }
 
-        function updateTrackerUI(count) {
+        // Notificação de Adição de Mês (+8) no Discord
+        function sendDiscordQuotaNotification(oldTotal, newTotal) {
+            if (!DISCORD_WEBHOOK_URL || DISCORD_WEBHOOK_URL.includes("COLE_SEU_WEBHOOK")) return;
+
+            const timeString = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+
+            const payload = {
+                username: "Painel Doc's Edit",
+                avatar_url: "https://cdn-icons-png.flaticon.com/512/3172/3172432.png",
+                embeds: [{
+                    title: "📅 Novo Mês Adicionado (+8 Vídeos)",
+                    description: `Foi adicionada a cota de mais um mês ao painel!`,
+                    color: 38912, // Azul/Verde
+                    fields: [
+                        { name: "Nova Meta Total", value: `**${newTotal} Reels**`, inline: true },
+                        { name: "Data / Horário", value: `${timeString}`, inline: false }
+                    ],
+                    footer: { text: "Doc's Edit Flow System" }
+                }]
+            };
+
+            fetch(DISCORD_WEBHOOK_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            }).catch(err => console.error("Erro no webhook:", err));
+        }
+
+        function updateTrackerUI(count, total) {
             document.getElementById('tracker-current').textContent = count;
-            const percentage = (count / 8) * 100;
+            document.getElementById('tracker-total').textContent = total;
+            const percentage = (count / total) * 100;
             document.getElementById('tracker-bar').style.width = percentage + "%";
-
-            // Lógica de alerta de fim de mês
-            const today = new Date();
-            const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-            const daysRemaining = lastDayOfMonth.getDate() - today.getDate();
-            const videosRemaining = 8 - count;
-
-            const alertElement = document.getElementById('tracker-alert-msg');
-
-            if (videosRemaining <= 0) {
-                alertElement.style.display = "block";
-                alertElement.style.color = "#34d399"; // Verde
-                alertElement.textContent = "🎉 Meta do mês concluída!";
-            } else if (daysRemaining <= 7) { // Faltando 7 dias ou menos para virar o mês
-                alertElement.style.display = "block";
-                alertElement.style.color = "#fbbf24"; // Amarelo/Laranja
-                alertElement.textContent = `⚠️ Faltam ${daysRemaining} dias e ${videosRemaining} vídeo(s) para fechar o mês!`;
-            } else {
-                alertElement.style.display = "none";
-            }
         }
 
         // --- SISTEMA DE CARDS ---
