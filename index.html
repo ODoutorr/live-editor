@@ -139,6 +139,14 @@
             box-shadow: 0 0 8px var(--accent);
         }
 
+        .tracker-alert {
+            font-size: 11px;
+            font-weight: 600;
+            color: #fbbf24;
+            display: none;
+            margin-top: 2px;
+        }
+
         .tracker-controls {
             display: flex;
             gap: 6px;
@@ -556,6 +564,7 @@
                 <div class="progress-bar-bg">
                     <div class="progress-bar-fill" id="tracker-bar"></div>
                 </div>
+                <div class="tracker-alert" id="tracker-alert-msg"></div>
             </div>
             <div class="tracker-controls">
                 <button class="btn-tracker" onclick="changeTrackerCount(-1)" title="Remover 1 entregue">
@@ -752,7 +761,7 @@
         }
 
         function sendDiscordQuotaNotification(oldTotal, newTotal) {
-            if (!DISCORD_WEBHOOK_URL || DISCORD_WEBHOOK_URL.includes("COLE_SEU_WEBHOOK")) return;
+            if (!DISCORD_WEBHOOK_URL || DISCORD_WEBHOOK_URL.includes("https://discord.com/api/webhooks/1529245113769787463/wjRHz40oJxbJd8aGnF4GxI32e9SoQP7tWM0otUgWraA-aMSjG4NcywE60fn9SBvpv754")) return;
 
             const timeString = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 
@@ -783,10 +792,29 @@
             document.getElementById('tracker-total').textContent = total;
             const percentage = (count / total) * 100;
             document.getElementById('tracker-bar').style.width = percentage + "%";
+
+            // Mensagem de Alerta de Fim de Mês
+            const today = new Date();
+            const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            const daysRemaining = lastDayOfMonth.getDate() - today.getDate();
+            const videosRemaining = total - count;
+
+            const alertElement = document.getElementById('tracker-alert-msg');
+
+            if (videosRemaining <= 0) {
+                alertElement.style.display = "block";
+                alertElement.style.color = "#34d399";
+                alertElement.textContent = "🎉 Meta do contrato concluída!";
+            } else if (daysRemaining <= 7) {
+                alertElement.style.display = "block";
+                alertElement.style.color = "#fbbf24";
+                alertElement.textContent = `⚠️ Faltam ${daysRemaining} dias e ${videosRemaining} vídeo(s) para fechar o mês!`;
+            } else {
+                alertElement.style.display = "none";
+            }
         }
 
-        // --- SISTEMA DE CARDS (ORDEEM CRONOLÓGICA: MAIS ANTIGOS PRIMEIRO) ---
-        // A mágica acontece na linha abaixo: trocamos "desc" por "asc"
+        // --- SISTEMA DE CARDS (ORDEM CRONOLÓGICA) ---
         db.collection("videos").orderBy("createdAt", "asc").onSnapshot((snapshot) => {
             videosArray = [];
             snapshot.forEach((doc) => {
