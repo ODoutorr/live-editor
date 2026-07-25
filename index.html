@@ -679,8 +679,8 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
-        // 🔗 COLE A URL DO SEU WEBHOOK DO DISCORD ABAIXO DENTRO DAS ASPAS:
-        const DISCORD_WEBHOOK_URL = "COLE_SEU_WEBHOOK_DO_DISCORD_AQUI";
+        // 🔗 URL do Webhook do Discord já inserida!
+        const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1529245113769787463/wjRHz40oJxbJd8aGnF4GxI32e9SoQP7tWM0otUgWraA-aMSjG4NcywE60fn9SBvpv754";
 
         // Armazenamento local dos cards
         let videosArray = [];
@@ -732,7 +732,7 @@
         }
 
         function sendDiscordNotification(oldCount, newCount, total) {
-            if (!DISCORD_WEBHOOK_URL || DISCORD_WEBHOOK_URL.includes("COLE_SEU_WEBHOOK")) return;
+            if (!DISCORD_WEBHOOK_URL) return;
 
             const timeString = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
             const isIncrease = newCount > oldCount;
@@ -761,7 +761,7 @@
         }
 
         function sendDiscordQuotaNotification(oldTotal, newTotal) {
-            if (!DISCORD_WEBHOOK_URL || DISCORD_WEBHOOK_URL.includes("https://discord.com/api/webhooks/1529245113769787463/wjRHz40oJxbJd8aGnF4GxI32e9SoQP7tWM0otUgWraA-aMSjG4NcywE60fn9SBvpv754")) return;
+            if (!DISCORD_WEBHOOK_URL) return;
 
             const timeString = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 
