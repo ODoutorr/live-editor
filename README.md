@@ -23,18 +23,18 @@
 
 ## 📌 Sobre o Projeto
 
-O **Doc's Edit** é uma plataforma/dashboard desenvolvida para profissionalizar o fluxo de trabalho entre criador e editor de vídeos[cite: 1]. Utilizando **GitHub Pages** para o front-end e **Firebase** para banco de dados em tempo real, ele permite acompanhar o status de cada edição, prazos e metas de entregas mensais[cite: 1].
+O **Doc's Edit** é uma plataforma/dashboard desenvolvida para profissionalizar o fluxo de trabalho entre criador e editor de vídeos. Utilizando **GitHub Pages** para o front-end e **Firebase** para banco de dados em tempo real, ele permite acompanhar o status de cada edição, prazos e metas de entregas mensais.
 
-> 💡 *Projeto criado para resolver um problema real de gestão e aprender conceitos práticos de integração web!*[cite: 1]
+> 💡 *Projeto criado para resolver um problema real de gestão e aprender conceitos práticos de integração web!*
 
 <br />
 
 ## ⚙️ Funcionalidades
 
-- [x] Dashboard interativo para acompanhamento de status dos vídeos[cite: 1]
-- [x] Integração em tempo real com banco de dados via Firebase[cite: 1]
-- [x] Controle de metas mensais de entregas (Reels/Shorts)[cite: 1]
-- [x] Publicado e hospedado diretamente via GitHub Pages[cite: 1]
+- [x] Dashboard interativo para acompanhamento de status dos vídeos
+- [x] Integração em tempo real com banco de dados via Firebase
+- [x] Controle de metas mensais de entregas (Reels/Shorts)
+- [x] Publicado e hospedado diretamente via GitHub Pages
 
 <br />
 
@@ -60,7 +60,7 @@ O **Doc's Edit** é uma plataforma/dashboard desenvolvida para profissionalizar 
 
 ## 👤 Autor
 
-Desenvolvido por **ODoutorr (Doc)**[cite: 1].
+Desenvolvido por **ODoutorr (Doc)**.
 
 <p>
   <a href="https://github.com/ODoutorr" target="_blank">
