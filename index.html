@@ -298,12 +298,12 @@
             letter-spacing: 0.3px;
         }
 
-        /* --- DESTAQUE AMARELO PARA OS COMENTÁRIOS DA DESCRIÇÃO --- */
+        /* Destaque Amarelo para Instruções de Edição */
         .card-desc {
             font-size: 13.5px;
-            color: #f59e0b; /* Amarelo/Dourado chamativo */
-            background-color: rgba(245, 158, 11, 0.08); /* Fundo sutil */
-            border-left: 3px solid #f59e0b; /* Linha de destaque na esquerda */
+            color: #f59e0b;
+            background-color: rgba(245, 158, 11, 0.08);
+            border-left: 3px solid #f59e0b;
             padding: 8px 12px;
             border-radius: 4px;
             margin-bottom: 16px;
@@ -677,21 +677,18 @@
         let videosArray = [];
         let currentDragId = null;
 
-        // --- SISTEMA DE META ACUMULADA (SEM RESET AUTOMÁTICO) ---
+        // --- SISTEMA DE META ACUMULADA ---
         const trackerRef = db.collection("settings").doc("accumulated_tracker");
 
-        // Escutar a meta acumulada em tempo real
         trackerRef.onSnapshot((doc) => {
             if (doc.exists) {
                 const data = doc.data();
                 updateTrackerUI(data.count || 0, data.total || 8);
             } else {
-                // Primeira inicialização
                 trackerRef.set({ count: 0, total: 8 });
             }
         });
 
-        // Alterar vídeos entregues
         function changeTrackerCount(delta) {
             trackerRef.get().then((doc) => {
                 let currentCount = 0;
@@ -710,7 +707,6 @@
             });
         }
 
-        // Botão Novo Mês (+8 Vídeos na Meta)
         function addNewMonthQuota() {
             if (confirm("Adicionar +8 vídeos na meta do novo mês?")) {
                 trackerRef.get().then((doc) => {
@@ -726,7 +722,6 @@
             }
         }
 
-        // Notificação de alteração de entrega no Discord
         function sendDiscordNotification(oldCount, newCount, total) {
             if (!DISCORD_WEBHOOK_URL || DISCORD_WEBHOOK_URL.includes("COLE_SEU_WEBHOOK")) return;
 
@@ -756,7 +751,6 @@
             }).catch(err => console.error("Erro no webhook:", err));
         }
 
-        // Notificação de Adição de Mês (+8) no Discord
         function sendDiscordQuotaNotification(oldTotal, newTotal) {
             if (!DISCORD_WEBHOOK_URL || DISCORD_WEBHOOK_URL.includes("COLE_SEU_WEBHOOK")) return;
 
@@ -768,7 +762,7 @@
                 embeds: [{
                     title: "📅 Novo Mês Adicionado (+8 Vídeos)",
                     description: `Foi adicionada a cota de mais um mês ao painel!`,
-                    color: 38912, // Azul/Verde
+                    color: 38912,
                     fields: [
                         { name: "Nova Meta Total", value: `**${newTotal} Reels**`, inline: true },
                         { name: "Data / Horário", value: `${timeString}`, inline: false }
@@ -791,8 +785,9 @@
             document.getElementById('tracker-bar').style.width = percentage + "%";
         }
 
-        // --- SISTEMA DE CARDS ---
-        db.collection("videos").orderBy("createdAt", "desc").onSnapshot((snapshot) => {
+        // --- SISTEMA DE CARDS (ORDEEM CRONOLÓGICA: MAIS ANTIGOS PRIMEIRO) ---
+        // A mágica acontece na linha abaixo: trocamos "desc" por "asc"
+        db.collection("videos").orderBy("createdAt", "asc").onSnapshot((snapshot) => {
             videosArray = [];
             snapshot.forEach((doc) => {
                 videosArray.push({ id: doc.id, ...doc.data() });
