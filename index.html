@@ -840,7 +840,7 @@
                 if (localWebhook) document.getElementById('sync-webhook-url').value = localWebhook;
             }
         }, (err) => {
-            console.warn("Acesso ao Firestore para drive_config bloqueado. Usando armazenamento local do navegador:", err.message);
+            console.warn("Acesso ao Firestore para drive_config restrito. Usando local:", err.message);
             // Fallback imediato para modo local se houver restrição de segurança no banco
             const localFolder = localStorage.getItem("google_drive_folder_url") || "";
             const localApiKey = localStorage.getItem("google_drive_api_key") || "";
@@ -1331,8 +1331,16 @@
             syncBtn.disabled = true;
 
             try {
-                // Sincroniza aceitando .rar e .zip (filtra pastas no JS)
-                const apiURL = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+trashed=false&fields=files(id,name,webViewLink,mimeType)&key=${apiKey}`;
+                // Montagem da query com codificação de caracteres segura e parâmetros para drives compartilhados/Workspace
+                const queryParams = new URLSearchParams({
+                    q: `'${folderId}' in parents and trashed = false`,
+                    fields: 'files(id,name,webViewLink,mimeType)',
+                    key: apiKey,
+                    supportsAllDrives: 'true',
+                    includeItemsFromAllDrives: 'true'
+                });
+
+                const apiURL = `https://www.googleapis.com/drive/v3/files?${queryParams.toString()}`;
                 
                 const response = await fetch(apiURL);
                 if (!response.ok) {
