@@ -749,6 +749,17 @@
         let videosArray = [];
         let currentDragId = null;
 
+        // Estado local do tracker para atualizações instantâneas (Otimistas)
+        let localTrackerState = { count: 0, total: 8 };
+
+        // Garante valores mínimos no LocalStorage para o fallback offline
+        if (localStorage.getItem("accumulated_tracker_count") === null) {
+            localStorage.setItem("accumulated_tracker_count", "0");
+        }
+        if (localStorage.getItem("accumulated_tracker_total") === null) {
+            localStorage.setItem("accumulated_tracker_total", "8");
+        }
+
         // Sanitização de entradas contra vulnerabilidade XSS
         function escapeHTML(str) {
             if (!str) return '';
@@ -766,57 +777,71 @@
         // --- SISTEMA DE META ACUMULADA ---
         const trackerRef = db.collection("settings").doc("accumulated_tracker");
 
-        // Escuta as configurações da meta acumulada em tempo real
+        // Escuta em tempo real o Firestore, atualizando a UI e o backup local
         trackerRef.onSnapshot((doc) => {
             if (doc.exists) {
                 const data = doc.data();
-                updateTrackerUI(data.count || 0, data.total || 8);
+                const count = typeof data.count === 'number' ? data.count : 0;
+                const total = typeof data.total === 'number' ? data.total : 8;
+                updateTrackerUI(count, total);
+                localStorage.setItem("accumulated_tracker_count", count.toString());
+                localStorage.setItem("accumulated_tracker_total", total.toString());
             } else {
                 trackerRef.set({ count: 0, total: 8 }).catch(err => {
-                    console.error("Erro ao inicializar meta acumulada no banco:", err);
+                    console.warn("Erro ao criar documento de configuração inicial no Firestore, usando local:", err);
                 });
+                const localCount = parseInt(localStorage.getItem("accumulated_tracker_count") || "0", 10);
+                const localTotal = parseInt(localStorage.getItem("accumulated_tracker_total") || "8", 10);
+                updateTrackerUI(localCount, localTotal);
             }
         }, (error) => {
-            console.error("Erro ao escutar dados de meta do Firestore:", error);
+            console.error("Erro ao escutar dados de meta do Firestore (Alternando para fallback local):", error);
+            const localCount = parseInt(localStorage.getItem("accumulated_tracker_count") || "0", 10);
+            const localTotal = parseInt(localStorage.getItem("accumulated_tracker_total") || "8", 10);
+            updateTrackerUI(localCount, localTotal);
         });
 
-        // Altera o contador utilizando um fluxo de set com merge
+        // Modifica o contador (Otimista na UI -> Tenta gravar no Firebase)
         function changeTrackerCount(delta) {
-            trackerRef.get().then((doc) => {
-                let currentCount = 0;
-                let currentTotal = 8;
-                if (doc.exists) {
-                    currentCount = doc.data().count || 0;
-                    currentTotal = doc.data().total || 8;
-                }
-                const newCount = Math.max(0, Math.min(currentTotal, currentCount + delta));
-                
-                return trackerRef.set({ count: newCount, total: currentTotal }, { merge: true }).then(() => {
-                    sendDiscordNotification(currentCount, newCount, currentTotal);
+            const oldCount = localTrackerState.count;
+            const total = localTrackerState.total;
+            const newCount = Math.max(0, Math.min(total, oldCount + delta));
+
+            if (newCount === oldCount) return;
+
+            // Altera na interface instantaneamente
+            updateTrackerUI(newCount, total);
+            localStorage.setItem("accumulated_tracker_count", newCount.toString());
+
+            // Tenta propagar em background
+            trackerRef.set({ count: newCount, total: total }, { merge: true })
+                .then(() => {
+                    sendDiscordNotification(oldCount, newCount, total);
+                })
+                .catch((err) => {
+                    console.warn("Firestore inacessível. O progresso foi mantido apenas localmente:", err);
                 });
-            }).catch((err) => {
-                console.error("Não foi possível alterar a meta acumulada:", err);
-            });
         }
 
-        // Incrementa a meta em +8 vídeos utilizando um fluxo de set com merge
+        // Incrementa limite mensal (Otimista na UI -> Tenta gravar no Firebase)
         function addNewMonthQuota() {
             if (confirm("Adicionar mais +8 vídeos ao seu saldo de metas?")) {
-                trackerRef.get().then((doc) => {
-                    let currentTotal = 8;
-                    let currentCount = 0;
-                    if (doc.exists) {
-                        currentCount = doc.data().count || 0;
-                        currentTotal = doc.data().total || 8;
-                    }
-                    const newTotal = currentTotal + 8;
-                    
-                    return trackerRef.set({ total: newTotal }, { merge: true }).then(() => {
-                        sendDiscordQuotaNotification(currentTotal, newTotal);
+                const oldTotal = localTrackerState.total;
+                const newTotal = oldTotal + 8;
+                const count = localTrackerState.count;
+
+                // Altera na interface instantaneamente
+                updateTrackerUI(count, newTotal);
+                localStorage.setItem("accumulated_tracker_total", newTotal.toString());
+
+                // Tenta propagar em background
+                trackerRef.set({ total: newTotal, count: count }, { merge: true })
+                    .then(() => {
+                        sendDiscordQuotaNotification(oldTotal, newTotal);
+                    })
+                    .catch((err) => {
+                        console.warn("Firestore inacessível. Nova cota salva apenas localmente:", err);
                     });
-                }).catch((err) => {
-                    console.error("Não foi possível alterar a cota mensal:", err);
-                });
             }
         }
 
@@ -886,6 +911,9 @@
         }
 
         function updateTrackerUI(count, total) {
+            localTrackerState.count = count;
+            localTrackerState.total = total;
+
             document.getElementById('tracker-current').textContent = count;
             document.getElementById('tracker-total').textContent = total;
             const percentage = total > 0 ? (count / total) * 100 : 0;
