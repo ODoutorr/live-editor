@@ -216,11 +216,16 @@
             flex-direction: column;
             max-height: calc(100vh - 180px);
             box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
-            transition: border-color 0.3s;
+            transition: border-color 0.3s, background-color 0.3s;
         }
 
         .column:hover {
             border-color: rgba(255, 255, 255, 0.08);
+        }
+
+        .column.drag-over {
+            border-color: var(--accent);
+            background-color: rgba(17, 24, 35, 0.85);
         }
 
         .column-header {
@@ -256,6 +261,12 @@
         .progress .column-dot { background-color: var(--status-progress); color: var(--status-progress); }
         .done .column-dot { background-color: var(--status-done); color: var(--status-done); }
 
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
         .card-count {
             background-color: rgba(255, 255, 255, 0.05);
             color: var(--text-muted);
@@ -264,6 +275,27 @@
             font-size: 12px;
             font-weight: 700;
             border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .btn-add-card {
+            background-color: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: var(--accent);
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-add-card:hover {
+            background-color: var(--accent);
+            color: #05080c;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
         }
 
         .card-list {
@@ -582,21 +614,26 @@
 
     <main>
         <!-- A FAZER -->
-        <div class="column todo">
+        <div class="column todo" ondragover="allowDrop(event)" ondragleave="dragLeave(event)" ondrop="drop(event, 'todo')">
             <div class="column-header">
                 <div class="column-title">
                     <div class="column-dot"></div>
                     A Fazer
                 </div>
-                <span class="card-count" id="count-todo">0</span>
+                <div class="header-actions">
+                    <span class="card-count" id="count-todo">0</span>
+                    <button class="btn-add-card" onclick="openModal('add')" title="Adicionar Novo Vídeo">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                </div>
             </div>
-            <div class="card-list" id="list-todo" ondragover="allowDrop(event)" ondrop="drop(event, 'todo')">
+            <div class="card-list" id="list-todo">
                 <!-- Cards dinâmicos entram aqui -->
             </div>
         </div>
 
         <!-- EM EDIÇÃO -->
-        <div class="column progress">
+        <div class="column progress" ondragover="allowDrop(event)" ondragleave="dragLeave(event)" ondrop="drop(event, 'progress')">
             <div class="column-header">
                 <div class="column-title">
                     <div class="column-dot"></div>
@@ -604,13 +641,13 @@
                 </div>
                 <span class="card-count" id="count-progress">0</span>
             </div>
-            <div class="card-list" id="list-progress" ondragover="allowDrop(event)" ondrop="drop(event, 'progress')">
+            <div class="card-list" id="list-progress">
                 <!-- Cards dinâmicos entram aqui -->
             </div>
         </div>
 
         <!-- CONCLUÍDO -->
-        <div class="column done">
+        <div class="column done" ondragover="allowDrop(event)" ondragleave="dragLeave(event)" ondrop="drop(event, 'done')">
             <div class="column-header">
                 <div class="column-title">
                     <div class="column-dot"></div>
@@ -618,13 +655,13 @@
                 </div>
                 <span class="card-count" id="count-done">0</span>
             </div>
-            <div class="card-list" id="list-done" ondragover="allowDrop(event)" ondrop="drop(event, 'done')">
+            <div class="card-list" id="list-done">
                 <!-- Cards dinâmicos entram aqui -->
             </div>
         </div>
     </main>
 
-    <!-- Modal Editar Vídeo -->
+    <!-- Modal Adicionar / Editar Vídeo -->
     <div class="modal-overlay" id="video-modal">
         <div class="modal">
             <h2 class="modal-title" id="modal-title-text">Editar Vídeo</h2>
@@ -642,12 +679,12 @@
                     <label for="video-desc">Instruções de Edição</label>
                     <textarea id="video-desc" rows="4" placeholder="Cortes aos 01:15, adicionar zoom, reações..." required></textarea>
                 </div>
-                <div class="form-group" id="final-link-group" style="display: none;">
+                <div class="form-group" id="final-link-group">
                     <label for="video-final">Link do Vídeo Finalizado</label>
                     <input type="url" id="video-final" placeholder="https://drive.google.com/...">
                 </div>
                 <div class="modal-buttons">
-                    <button type="button" class="btn-delete-modal" onclick="deleteVideoFromModal()">
+                    <button type="button" class="btn-delete-modal" id="btn-delete-action" onclick="deleteVideoFromModal()">
                         <i class="fa-solid fa-trash-can"></i> Excluir
                     </button>
                     <div class="modal-right-buttons">
@@ -664,7 +701,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
     <script>
-        // Suas chaves de configuração do Firebase
+        // Configuração do Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyDEejQS_JQMsd7D3-hXsC30UmYH1mJcHcw",
             authDomain: "doc-editor-c5af8.firebaseapp.com",
@@ -679,121 +716,172 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
-        // 🔗 URL do Webhook do Discord já inserida!
+        // URL do Webhook do Discord
         const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1529245113769787463/wjRHz40oJxbJd8aGnF4GxI32e9SoQP7tWM0otUgWraA-aMSjG4NcywE60fn9SBvpv754";
 
         // Armazenamento local dos cards
         let videosArray = [];
         let currentDragId = null;
 
+        // Sanitização de entradas simples para prevenir XSS
+        function escapeHTML(str) {
+            if (!str) return '';
+            return str.replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag] || tag)
+            );
+        }
+
         // --- SISTEMA DE META ACUMULADA ---
         const trackerRef = db.collection("settings").doc("accumulated_tracker");
 
+        // Escuta em tempo real as configurações do tracker
         trackerRef.onSnapshot((doc) => {
             if (doc.exists) {
                 const data = doc.data();
                 updateTrackerUI(data.count || 0, data.total || 8);
             } else {
-                trackerRef.set({ count: 0, total: 8 });
+                trackerRef.set({ count: 0, total: 8 }).catch(err => {
+                    console.error("Erro ao inicializar configurações do tracker:", err);
+                });
             }
+        }, (error) => {
+            console.error("Erro ao carregar dados do tracker do Firestore:", error);
         });
 
+        // Altera o contador utilizando transação para evitar condições de corrida
         function changeTrackerCount(delta) {
-            trackerRef.get().then((doc) => {
-                let currentCount = 0;
-                let currentTotal = 8;
-                if (doc.exists) {
-                    currentCount = doc.data().count || 0;
-                    currentTotal = doc.data().total || 8;
+            db.runTransaction((transaction) => {
+                return transaction.get(trackerRef).then((doc) => {
+                    let currentCount = 0;
+                    let currentTotal = 8;
+                    if (doc.exists) {
+                        currentCount = doc.data().count || 0;
+                        currentTotal = doc.data().total || 8;
+                    }
+                    let newCount = Math.max(0, Math.min(currentTotal, currentCount + delta));
+                    
+                    transaction.set(trackerRef, { count: newCount }, { merge: true });
+                    return { oldCount: currentCount, newCount: newCount, total: currentTotal };
+                });
+            }).then((result) => {
+                if (result && result.oldCount !== result.newCount) {
+                    sendDiscordNotification(result.oldCount, result.newCount, result.total);
                 }
-                let newCount = Math.max(0, Math.min(currentTotal, currentCount + delta));
-                
-                if (newCount !== currentCount) {
-                    trackerRef.update({ count: newCount }).then(() => {
-                        sendDiscordNotification(currentCount, newCount, currentTotal);
-                    });
-                }
+            }).catch((err) => {
+                console.error("Falha ao registrar alteração no tracker:", err);
             });
         }
 
+        // Adiciona nova cota de vídeos mensal (+8) usando transação
         function addNewMonthQuota() {
-            if (confirm("Adicionar +8 vídeos na meta do novo mês?")) {
-                trackerRef.get().then((doc) => {
-                    let currentTotal = 8;
-                    if (doc.exists) {
-                        currentTotal = doc.data().total || 8;
-                    }
-                    let newTotal = currentTotal + 8;
-                    trackerRef.update({ total: newTotal }).then(() => {
-                        sendDiscordQuotaNotification(currentTotal, newTotal);
+            if (confirm("Deseja adicionar mais 8 vídeos à meta acumulada deste mês?")) {
+                db.runTransaction((transaction) => {
+                    return transaction.get(trackerRef).then((doc) => {
+                        let currentTotal = 8;
+                        if (doc.exists) {
+                            currentTotal = doc.data().total || 8;
+                        }
+                        let newTotal = currentTotal + 8;
+                        transaction.set(trackerRef, { total: newTotal }, { merge: true });
+                        return { oldTotal: currentTotal, newTotal: newTotal };
                     });
+                }).then((result) => {
+                    if (result) {
+                        sendDiscordQuotaNotification(result.oldTotal, result.newTotal);
+                    }
+                }).catch((err) => {
+                    console.error("Falha ao atualizar cota acumulada:", err);
                 });
             }
         }
 
-        function sendDiscordNotification(oldCount, newCount, total) {
+        // Envio assíncrono isolado para Webhook do Discord (Notificação de progresso)
+        async function sendDiscordNotification(oldCount, newCount, total) {
             if (!DISCORD_WEBHOOK_URL) return;
 
-            const timeString = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
-            const isIncrease = newCount > oldCount;
-            
-            const payload = {
-                username: "Painel Doc's Edit",
-                avatar_url: "https://cdn-icons-png.flaticon.com/512/3172/3172432.png",
-                embeds: [{
-                    title: isIncrease ? "📈 +1 Vídeo Entregue" : "📉 -1 Vídeo Revertido",
-                    description: `O progresso de vídeos foi atualizado no painel!`,
-                    color: isIncrease ? 65280 : 15548997,
-                    fields: [
-                        { name: "Saldo do Contrato", value: `**${newCount} / ${total} Reels**`, inline: true },
-                        { name: "Alteração", value: `${oldCount} ➔ **${newCount}**`, inline: true },
-                        { name: "Data / Horário", value: `${timeString}`, inline: false }
-                    ],
-                    footer: { text: "Doc's Edit Flow System" }
-                }]
-            };
+            try {
+                const timeString = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+                const isIncrease = newCount > oldCount;
+                
+                const payload = {
+                    username: "Painel Doc's Edit",
+                    avatar_url: "https://cdn-icons-png.flaticon.com/512/3172/3172432.png",
+                    embeds: [{
+                        title: isIncrease ? "📈 +1 Vídeo Entregue" : "📉 -1 Vídeo Revertido",
+                        description: `O progresso de vídeos foi atualizado no painel de controle.`,
+                        color: isIncrease ? 65280 : 15548997,
+                        fields: [
+                            { name: "Saldo do Contrato", value: `**${newCount} / ${total} Reels**`, inline: true },
+                            { name: "Alteração", value: `${oldCount} ➔ **${newCount}**`, inline: true },
+                            { name: "Data / Horário", value: `${timeString}`, inline: false }
+                        ],
+                        footer: { text: "Doc's Edit Flow System" }
+                    }]
+                };
 
-            fetch(DISCORD_WEBHOOK_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            }).catch(err => console.error("Erro no webhook:", err));
+                const response = await fetch(DISCORD_WEBHOOK_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    console.warn(`Discord webhook respondeu com erro status: ${response.status}`);
+                }
+            } catch (err) {
+                console.error("Não foi possível enviar a notificação ao Discord:", err);
+            }
         }
 
-        function sendDiscordQuotaNotification(oldTotal, newTotal) {
+        // Envio assíncrono isolado para Webhook do Discord (Notificação de Nova Cota)
+        async function sendDiscordQuotaNotification(oldTotal, newTotal) {
             if (!DISCORD_WEBHOOK_URL) return;
 
-            const timeString = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+            try {
+                const timeString = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 
-            const payload = {
-                username: "Painel Doc's Edit",
-                avatar_url: "https://cdn-icons-png.flaticon.com/512/3172/3172432.png",
-                embeds: [{
-                    title: "📅 Novo Mês Adicionado (+8 Vídeos)",
-                    description: `Foi adicionada a cota de mais um mês ao painel!`,
-                    color: 38912,
-                    fields: [
-                        { name: "Nova Meta Total", value: `**${newTotal} Reels**`, inline: true },
-                        { name: "Data / Horário", value: `${timeString}`, inline: false }
-                    ],
-                    footer: { text: "Doc's Edit Flow System" }
-                }]
-            };
+                const payload = {
+                    username: "Painel Doc's Edit",
+                    avatar_url: "https://cdn-icons-png.flaticon.com/512/3172/3172432.png",
+                    embeds: [{
+                        title: "📅 Novo Mês Adicionado (+8 Vídeos)",
+                        description: `Uma nova cota de vídeos mensais foi estipulada no painel de controle.`,
+                        color: 38912,
+                        fields: [
+                            { name: "Meta Total Ajustada", value: `**${newTotal} Reels**`, inline: true },
+                            { name: "Data / Horário", value: `${timeString}`, inline: false }
+                        ],
+                        footer: { text: "Doc's Edit Flow System" }
+                    }]
+                };
 
-            fetch(DISCORD_WEBHOOK_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            }).catch(err => console.error("Erro no webhook:", err));
+                const response = await fetch(DISCORD_WEBHOOK_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    console.warn(`Discord webhook respondeu com erro status: ${response.status}`);
+                }
+            } catch (err) {
+                console.error("Não foi possível notificar a nova cota mensal no Discord:", err);
+            }
         }
 
         function updateTrackerUI(count, total) {
             document.getElementById('tracker-current').textContent = count;
             document.getElementById('tracker-total').textContent = total;
-            const percentage = (count / total) * 100;
-            document.getElementById('tracker-bar').style.width = percentage + "%";
+            const percentage = total > 0 ? (count / total) * 100 : 0;
+            document.getElementById('tracker-bar').style.width = Math.min(percentage, 100) + "%";
 
-            // Mensagem de Alerta de Fim de Mês
+            // Alerta de fechamento de ciclo mensal
             const today = new Date();
             const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
             const daysRemaining = lastDayOfMonth.getDate() - today.getDate();
@@ -814,13 +902,28 @@
             }
         }
 
-        // --- SISTEMA DE CARDS (ORDEM CRONOLÓGICA) ---
-        db.collection("videos").orderBy("createdAt", "asc").onSnapshot((snapshot) => {
+        // --- SISTEMA DE CARDS (SINCRONIZAÇÃO E ORDENAÇÃO) ---
+        // Buscamos os vídeos sem restrição de ordem para evitar erros de índice ausente, ordenando na memória do cliente.
+        db.collection("videos").onSnapshot((snapshot) => {
             videosArray = [];
             snapshot.forEach((doc) => {
                 videosArray.push({ id: doc.id, ...doc.data() });
             });
+
+            // Ordenação cronológica resiliente na aplicação
+            videosArray.sort((a, b) => {
+                const parseDate = (val) => {
+                    if (!val) return new Date(0);
+                    if (typeof val.toDate === 'function') return val.toDate(); // Formato Timestamp nativo
+                    if (val.seconds) return new Date(val.seconds * 1000);
+                    return new Date(val); // Strings ISO ou numéricos
+                };
+                return parseDate(a.createdAt) - parseDate(b.createdAt);
+            });
+
             renderBoard();
+        }, (error) => {
+            console.error("Erro na leitura de documentos do banco de dados:", error);
         });
 
         function renderBoard() {
@@ -830,31 +933,48 @@
                 done: document.getElementById('list-done')
             };
 
+            // Limpa as colunas antes de renderizar
             Object.values(columns).forEach(col => col.innerHTML = '');
 
             const counts = { todo: 0, progress: 0, done: 0 };
 
             videosArray.forEach(video => {
-                counts[video.status]++;
+                // Valida o status do card
+                const statusKey = (video.status && columns[video.status]) ? video.status : 'todo';
+                counts[statusKey]++;
+
+                // Conversão legível da data de criação
+                let creationDateStr = "";
+                if (video.createdAt) {
+                    const parsed = typeof video.createdAt.toDate === 'function' ? video.createdAt.toDate() : new Date(video.createdAt);
+                    creationDateStr = parsed.toLocaleDateString("pt-BR");
+                } else {
+                    creationDateStr = "N/A";
+                }
+
+                const safeTitle = escapeHTML(video.title);
+                const safeDesc = escapeHTML(video.desc);
+                const safeDriveUrl = escapeHTML(video.driveUrl);
+                const safeFinalUrl = escapeHTML(video.finalUrl);
 
                 const cardHTML = `
-                    <div class="card" draggable="true" ondragstart="dragStart('${video.id}')" id="card-${video.id}">
-                        <h3 class="card-title">${video.title}</h3>
-                        <p class="card-desc">${video.desc}</p>
+                    <div class="card" draggable="true" ondragstart="dragStart(event, '${video.id}')" id="card-${video.id}">
+                        <h3 class="card-title">${safeTitle}</h3>
+                        <p class="card-desc">${safeDesc}</p>
                         <div class="card-links">
-                            <a href="${video.driveUrl}" target="_blank" class="link-badge drive">
+                            <a href="${safeDriveUrl}" target="_blank" class="link-badge drive" rel="noopener noreferrer">
                                 <i class="fa-brands fa-google-drive"></i> Baixar Bruto
                             </a>
-                            ${video.finalUrl ? `
-                                <a href="${video.finalUrl}" target="_blank" class="link-badge final">
+                            ${safeFinalUrl ? `
+                                <a href="${safeFinalUrl}" target="_blank" class="link-badge final" rel="noopener noreferrer">
                                     <i class="fa-solid fa-circle-check"></i> Vídeo Pronto
                                 </a>
                             ` : ''}
                         </div>
                         <div class="card-footer">
-                            <span>Adicionado: ${new Date(video.createdAt).toLocaleDateString()}</span>
+                            <span>Adicionado: ${creationDateStr}</span>
                             <div class="card-actions">
-                                <button class="btn-action edit" onclick="openModal('edit', '${video.id}')">
+                                <button class="btn-action edit" onclick="openModal('edit', '${video.id}')" title="Configurações do Vídeo">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
                             </div>
@@ -862,7 +982,7 @@
                     </div>
                 `;
 
-                columns[video.status].insertAdjacentHTML('beforeend', cardHTML);
+                columns[statusKey].insertAdjacentHTML('beforeend', cardHTML);
             });
 
             document.getElementById('count-todo').textContent = counts.todo;
@@ -870,40 +990,75 @@
             document.getElementById('count-done').textContent = counts.done;
         }
 
-        function dragStart(id) {
+        // --- INTERATIVIDADE DRAG & DROP ---
+        function dragStart(ev, id) {
             currentDragId = id;
+            if(ev.dataTransfer) {
+                ev.dataTransfer.setData("text/plain", id);
+                ev.dataTransfer.effectAllowed = "move";
+            }
         }
 
         function allowDrop(ev) {
             ev.preventDefault();
+            ev.currentTarget.classList.add('drag-over');
+        }
+
+        function dragLeave(ev) {
+            ev.currentTarget.classList.remove('drag-over');
         }
 
         function drop(ev, newStatus) {
             ev.preventDefault();
+            ev.currentTarget.classList.remove('drag-over');
+            
             if (currentDragId) {
                 db.collection("videos").doc(currentDragId).update({
                     status: newStatus
-                }).catch(err => console.error("Erro ao mover card:", err));
+                }).catch(err => {
+                    console.error("Falha ao transicionar status do card:", err);
+                });
                 currentDragId = null;
             }
         }
 
+        // --- GERENCIAMENTO DE MODAL ---
         const modal = document.getElementById('video-modal');
 
         function openModal(mode, id = null) {
             modal.classList.add('active');
+            
+            const finalLinkGroup = document.getElementById('final-link-group');
+            const deleteBtn = document.getElementById('btn-delete-action');
+
             if (mode === 'edit') {
                 document.getElementById('modal-title-text').textContent = 'Editar Vídeo';
-                document.getElementById('final-link-group').style.display = 'block';
+                document.getElementById('btn-submit-text').textContent = 'Salvar Alterações';
+                
+                if (finalLinkGroup) finalLinkGroup.style.display = 'block';
+                if (deleteBtn) deleteBtn.style.display = 'inline-flex';
 
                 const video = videosArray.find(v => v.id === id);
                 if (video) {
                     document.getElementById('video-id').value = video.id;
-                    document.getElementById('video-name').value = video.title;
-                    document.getElementById('video-drive').value = video.driveUrl;
-                    document.getElementById('video-desc').value = video.desc;
+                    document.getElementById('video-name').value = video.title || '';
+                    document.getElementById('video-drive').value = video.driveUrl || '';
+                    document.getElementById('video-desc').value = video.desc || '';
                     document.getElementById('video-final').value = video.finalUrl || '';
                 }
+            } else {
+                // Modo Criação/Inclusão
+                document.getElementById('modal-title-text').textContent = 'Novo Registro de Vídeo';
+                document.getElementById('btn-submit-text').textContent = 'Adicionar ao Painel';
+                
+                if (finalLinkGroup) finalLinkGroup.style.display = 'none';
+                if (deleteBtn) deleteBtn.style.display = 'none';
+
+                document.getElementById('video-id').value = '';
+                document.getElementById('video-name').value = '';
+                document.getElementById('video-drive').value = '';
+                document.getElementById('video-desc').value = '';
+                document.getElementById('video-final').value = '';
             }
         }
 
@@ -913,6 +1068,7 @@
 
         function handleFormSubmit(e) {
             e.preventDefault();
+            
             const id = document.getElementById('video-id').value;
             const title = document.getElementById('video-name').value;
             const driveUrl = document.getElementById('video-drive').value;
@@ -920,22 +1076,41 @@
             const finalUrl = document.getElementById('video-final').value;
 
             if (id) {
+                // Atualizar Registro Existente
                 db.collection("videos").doc(id).update({
-                    title,
-                    driveUrl,
-                    desc,
+                    title: title,
+                    driveUrl: driveUrl,
+                    desc: desc,
                     finalUrl: finalUrl || null
                 }).then(() => {
                     closeModal();
+                }).catch((err) => {
+                    console.error("Erro ao tentar atualizar informações do card:", err);
+                });
+            } else {
+                // Adicionar Novo Registro
+                db.collection("videos").add({
+                    title: title,
+                    driveUrl: driveUrl,
+                    desc: desc,
+                    finalUrl: null,
+                    status: 'todo',
+                    createdAt: new Date().toISOString()
+                }).then(() => {
+                    closeModal();
+                }).catch((err) => {
+                    console.error("Erro ao registrar novo vídeo no Firestore:", err);
                 });
             }
         }
 
         function deleteVideoFromModal() {
             const id = document.getElementById('video-id').value;
-            if (id && confirm("Quer mesmo apagar esse projeto do painel?")) {
+            if (id && confirm("Deseja mesmo remover esse projeto do painel de controle de forma definitiva?")) {
                 db.collection("videos").doc(id).delete().then(() => {
                     closeModal();
+                }).catch((err) => {
+                    console.error("Falha ao tentar remover o registro do banco de dados:", err);
                 });
             }
         }
