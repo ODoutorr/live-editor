@@ -599,6 +599,9 @@
                 <div class="tracker-alert" id="tracker-alert-msg"></div>
             </div>
             <div class="tracker-controls">
+                <button class="btn-tracker" onclick="openDriveSyncModal()" title="Sincronizar com Google Drive">
+                    <i class="fa-brands fa-google-drive"></i>
+                </button>
                 <button class="btn-tracker" onclick="changeTrackerCount(-1)" title="Remover 1 entregue">
                     <i class="fa-solid fa-minus"></i>
                 </button>
@@ -696,6 +699,29 @@
         </div>
     </div>
 
+    <!-- Modal Sincronização Google Drive -->
+    <div class="modal-overlay" id="drive-sync-modal">
+        <div class="modal">
+            <h2 class="modal-title">Sincronizar Google Drive</h2>
+            <div class="form-group">
+                <label for="sync-folder-url">Link da Pasta Compartilhada do Google Drive</label>
+                <input type="url" id="sync-folder-url" placeholder="https://drive.google.com/drive/folders/..." required>
+            </div>
+            <div class="form-group">
+                <label for="sync-api-key">Chave de API do Google Cloud (Necessária)</label>
+                <input type="password" id="sync-api-key" placeholder="AIzaSy..." required>
+                <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block;">
+                    A pasta do Drive precisa estar configurada com acesso de leitura pública ("Qualquer pessoa com o link").
+                </small>
+            </div>
+            <div id="sync-status-msg" style="margin-bottom: 15px; font-size: 13.5px; color: var(--accent); display: none; line-height: 1.4;"></div>
+            <div class="modal-buttons">
+                <button type="button" class="btn-cancel" onclick="closeDriveSyncModal()">Fechar</button>
+                <button type="button" class="btn-submit" id="btn-start-sync" onclick="startGoogleDriveSync()">Sincronizar Arquivos</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Firebase SDKs (Versão Compat) -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
@@ -723,7 +749,7 @@
         let videosArray = [];
         let currentDragId = null;
 
-        // Sanitização de entradas simples para prevenir XSS
+        // Sanitização de entradas contra vulnerabilidade XSS
         function escapeHTML(str) {
             if (!str) return '';
             return str.replace(/[&<>'"]/g, 
@@ -740,71 +766,63 @@
         // --- SISTEMA DE META ACUMULADA ---
         const trackerRef = db.collection("settings").doc("accumulated_tracker");
 
-        // Escuta em tempo real as configurações do tracker
+        // Escuta as configurações da meta acumulada em tempo real
         trackerRef.onSnapshot((doc) => {
             if (doc.exists) {
                 const data = doc.data();
                 updateTrackerUI(data.count || 0, data.total || 8);
             } else {
                 trackerRef.set({ count: 0, total: 8 }).catch(err => {
-                    console.error("Erro ao inicializar configurações do tracker:", err);
+                    console.error("Erro ao inicializar meta acumulada no banco:", err);
                 });
             }
         }, (error) => {
-            console.error("Erro ao carregar dados do tracker do Firestore:", error);
+            console.error("Erro ao escutar dados de meta do Firestore:", error);
         });
 
-        // Altera o contador utilizando transação para evitar condições de corrida
+        // Altera o contador utilizando um fluxo de set com merge
         function changeTrackerCount(delta) {
-            db.runTransaction((transaction) => {
-                return transaction.get(trackerRef).then((doc) => {
-                    let currentCount = 0;
+            trackerRef.get().then((doc) => {
+                let currentCount = 0;
+                let currentTotal = 8;
+                if (doc.exists) {
+                    currentCount = doc.data().count || 0;
+                    currentTotal = doc.data().total || 8;
+                }
+                const newCount = Math.max(0, Math.min(currentTotal, currentCount + delta));
+                
+                return trackerRef.set({ count: newCount, total: currentTotal }, { merge: true }).then(() => {
+                    sendDiscordNotification(currentCount, newCount, currentTotal);
+                });
+            }).catch((err) => {
+                console.error("Não foi possível alterar a meta acumulada:", err);
+            });
+        }
+
+        // Incrementa a meta em +8 vídeos utilizando um fluxo de set com merge
+        function addNewMonthQuota() {
+            if (confirm("Adicionar mais +8 vídeos ao seu saldo de metas?")) {
+                trackerRef.get().then((doc) => {
                     let currentTotal = 8;
+                    let currentCount = 0;
                     if (doc.exists) {
                         currentCount = doc.data().count || 0;
                         currentTotal = doc.data().total || 8;
                     }
-                    let newCount = Math.max(0, Math.min(currentTotal, currentCount + delta));
+                    const newTotal = currentTotal + 8;
                     
-                    transaction.set(trackerRef, { count: newCount }, { merge: true });
-                    return { oldCount: currentCount, newCount: newCount, total: currentTotal };
-                });
-            }).then((result) => {
-                if (result && result.oldCount !== result.newCount) {
-                    sendDiscordNotification(result.oldCount, result.newCount, result.total);
-                }
-            }).catch((err) => {
-                console.error("Falha ao registrar alteração no tracker:", err);
-            });
-        }
-
-        // Adiciona nova cota de vídeos mensal (+8) usando transação
-        function addNewMonthQuota() {
-            if (confirm("Deseja adicionar mais 8 vídeos à meta acumulada deste mês?")) {
-                db.runTransaction((transaction) => {
-                    return transaction.get(trackerRef).then((doc) => {
-                        let currentTotal = 8;
-                        if (doc.exists) {
-                            currentTotal = doc.data().total || 8;
-                        }
-                        let newTotal = currentTotal + 8;
-                        transaction.set(trackerRef, { total: newTotal }, { merge: true });
-                        return { oldTotal: currentTotal, newTotal: newTotal };
+                    return trackerRef.set({ total: newTotal }, { merge: true }).then(() => {
+                        sendDiscordQuotaNotification(currentTotal, newTotal);
                     });
-                }).then((result) => {
-                    if (result) {
-                        sendDiscordQuotaNotification(result.oldTotal, result.newTotal);
-                    }
                 }).catch((err) => {
-                    console.error("Falha ao atualizar cota acumulada:", err);
+                    console.error("Não foi possível alterar a cota mensal:", err);
                 });
             }
         }
 
-        // Envio assíncrono isolado para Webhook do Discord (Notificação de progresso)
+        // Notificações assíncronas do Discord Webhook
         async function sendDiscordNotification(oldCount, newCount, total) {
             if (!DISCORD_WEBHOOK_URL) return;
-
             try {
                 const timeString = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
                 const isIncrease = newCount > oldCount;
@@ -814,7 +832,7 @@
                     avatar_url: "https://cdn-icons-png.flaticon.com/512/3172/3172432.png",
                     embeds: [{
                         title: isIncrease ? "📈 +1 Vídeo Entregue" : "📉 -1 Vídeo Revertido",
-                        description: `O progresso de vídeos foi atualizado no painel de controle.`,
+                        description: `O progresso de vídeos foi atualizado no painel!`,
                         color: isIncrease ? 65280 : 15548997,
                         fields: [
                             { name: "Saldo do Contrato", value: `**${newCount} / ${total} Reels**`, inline: true },
@@ -825,24 +843,19 @@
                     }]
                 };
 
-                const response = await fetch(DISCORD_WEBHOOK_URL, {
+                const res = await fetch(DISCORD_WEBHOOK_URL, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload)
                 });
-
-                if (!response.ok) {
-                    console.warn(`Discord webhook respondeu com erro status: ${response.status}`);
-                }
+                if (!res.ok) console.warn("Resposta anormal ao enviar webhook ao Discord:", res.status);
             } catch (err) {
-                console.error("Não foi possível enviar a notificação ao Discord:", err);
+                console.error("Falha ao propagar notificação ao Discord:", err);
             }
         }
 
-        // Envio assíncrono isolado para Webhook do Discord (Notificação de Nova Cota)
         async function sendDiscordQuotaNotification(oldTotal, newTotal) {
             if (!DISCORD_WEBHOOK_URL) return;
-
             try {
                 const timeString = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 
@@ -851,27 +864,24 @@
                     avatar_url: "https://cdn-icons-png.flaticon.com/512/3172/3172432.png",
                     embeds: [{
                         title: "📅 Novo Mês Adicionado (+8 Vídeos)",
-                        description: `Uma nova cota de vídeos mensais foi estipulada no painel de controle.`,
+                        description: `Foi adicionada a cota de mais um mês ao painel!`,
                         color: 38912,
                         fields: [
-                            { name: "Meta Total Ajustada", value: `**${newTotal} Reels**`, inline: true },
+                            { name: "Nova Meta Total", value: `**${newTotal} Reels**`, inline: true },
                             { name: "Data / Horário", value: `${timeString}`, inline: false }
                         ],
                         footer: { text: "Doc's Edit Flow System" }
                     }]
                 };
 
-                const response = await fetch(DISCORD_WEBHOOK_URL, {
+                const res = await fetch(DISCORD_WEBHOOK_URL, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload)
                 });
-
-                if (!response.ok) {
-                    console.warn(`Discord webhook respondeu com erro status: ${response.status}`);
-                }
+                if (!res.ok) console.warn("Resposta anormal ao enviar webhook ao Discord:", res.status);
             } catch (err) {
-                console.error("Não foi possível notificar a nova cota mensal no Discord:", err);
+                console.error("Falha ao propagar notificação de nova cota ao Discord:", err);
             }
         }
 
@@ -881,7 +891,6 @@
             const percentage = total > 0 ? (count / total) * 100 : 0;
             document.getElementById('tracker-bar').style.width = Math.min(percentage, 100) + "%";
 
-            // Alerta de fechamento de ciclo mensal
             const today = new Date();
             const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
             const daysRemaining = lastDayOfMonth.getDate() - today.getDate();
@@ -903,20 +912,19 @@
         }
 
         // --- SISTEMA DE CARDS (SINCRONIZAÇÃO E ORDENAÇÃO) ---
-        // Buscamos os vídeos sem restrição de ordem para evitar erros de índice ausente, ordenando na memória do cliente.
         db.collection("videos").onSnapshot((snapshot) => {
             videosArray = [];
             snapshot.forEach((doc) => {
                 videosArray.push({ id: doc.id, ...doc.data() });
             });
 
-            // Ordenação cronológica resiliente na aplicação
+            // Ordenação local estável
             videosArray.sort((a, b) => {
                 const parseDate = (val) => {
                     if (!val) return new Date(0);
-                    if (typeof val.toDate === 'function') return val.toDate(); // Formato Timestamp nativo
+                    if (typeof val.toDate === 'function') return val.toDate();
                     if (val.seconds) return new Date(val.seconds * 1000);
-                    return new Date(val); // Strings ISO ou numéricos
+                    return new Date(val);
                 };
                 return parseDate(a.createdAt) - parseDate(b.createdAt);
             });
@@ -933,17 +941,14 @@
                 done: document.getElementById('list-done')
             };
 
-            // Limpa as colunas antes de renderizar
             Object.values(columns).forEach(col => col.innerHTML = '');
 
             const counts = { todo: 0, progress: 0, done: 0 };
 
             videosArray.forEach(video => {
-                // Valida o status do card
                 const statusKey = (video.status && columns[video.status]) ? video.status : 'todo';
                 counts[statusKey]++;
 
-                // Conversão legível da data de criação
                 let creationDateStr = "";
                 if (video.createdAt) {
                     const parsed = typeof video.createdAt.toDate === 'function' ? video.createdAt.toDate() : new Date(video.createdAt);
@@ -1016,14 +1021,15 @@
                 db.collection("videos").doc(currentDragId).update({
                     status: newStatus
                 }).catch(err => {
-                    console.error("Falha ao transicionar status do card:", err);
+                    console.error("Erro ao persistir transição de card:", err);
                 });
                 currentDragId = null;
             }
         }
 
-        // --- GERENCIAMENTO DE MODAL ---
+        // --- GERENCIAMENTO DOS MODAIS ---
         const modal = document.getElementById('video-modal');
+        const driveSyncModal = document.getElementById('drive-sync-modal');
 
         function openModal(mode, id = null) {
             modal.classList.add('active');
@@ -1047,9 +1053,8 @@
                     document.getElementById('video-final').value = video.finalUrl || '';
                 }
             } else {
-                // Modo Criação/Inclusão
-                document.getElementById('modal-title-text').textContent = 'Novo Registro de Vídeo';
-                document.getElementById('btn-submit-text').textContent = 'Adicionar ao Painel';
+                document.getElementById('modal-title-text').textContent = 'Novo Vídeo';
+                document.getElementById('btn-submit-text').textContent = 'Adicionar';
                 
                 if (finalLinkGroup) finalLinkGroup.style.display = 'none';
                 if (deleteBtn) deleteBtn.style.display = 'none';
@@ -1066,6 +1071,26 @@
             modal.classList.remove('active');
         }
 
+        function openDriveSyncModal() {
+            driveSyncModal.classList.add('active');
+            document.getElementById('sync-status-msg').style.display = 'none';
+            
+            // Tenta resgatar configurações salvas do Google Drive para poupar redigitação
+            db.collection("settings").doc("drive_config").get().then((doc) => {
+                if (doc.exists) {
+                    const data = doc.data();
+                    if (data.folderUrl) document.getElementById('sync-folder-url').value = data.folderUrl;
+                    if (data.apiKey) document.getElementById('sync-api-key').value = data.apiKey;
+                }
+            }).catch(err => {
+                console.warn("Erro ao ler credenciais locais do Drive:", err);
+            });
+        }
+
+        function closeDriveSyncModal() {
+            driveSyncModal.classList.remove('active');
+        }
+
         function handleFormSubmit(e) {
             e.preventDefault();
             
@@ -1076,7 +1101,6 @@
             const finalUrl = document.getElementById('video-final').value;
 
             if (id) {
-                // Atualizar Registro Existente
                 db.collection("videos").doc(id).update({
                     title: title,
                     driveUrl: driveUrl,
@@ -1085,10 +1109,9 @@
                 }).then(() => {
                     closeModal();
                 }).catch((err) => {
-                    console.error("Erro ao tentar atualizar informações do card:", err);
+                    console.error("Erro ao atualizar o card de vídeo:", err);
                 });
             } else {
-                // Adicionar Novo Registro
                 db.collection("videos").add({
                     title: title,
                     driveUrl: driveUrl,
@@ -1106,12 +1129,101 @@
 
         function deleteVideoFromModal() {
             const id = document.getElementById('video-id').value;
-            if (id && confirm("Deseja mesmo remover esse projeto do painel de controle de forma definitiva?")) {
+            if (id && confirm("Deseja deletar este projeto permanentemente?")) {
                 db.collection("videos").doc(id).delete().then(() => {
                     closeModal();
                 }).catch((err) => {
-                    console.error("Falha ao tentar remover o registro do banco de dados:", err);
+                    console.error("Erro ao deletar o card de vídeo:", err);
                 });
+            }
+        }
+
+        // --- INTEGRAÇÃO COM A API DO GOOGLE DRIVE ---
+        function extractFolderId(url) {
+            const matches = url.match(/folders\/([a-zA-Z0-9-_]+)/);
+            return matches ? matches[1] : null;
+        }
+
+        async function startGoogleDriveSync() {
+            const urlInput = document.getElementById('sync-folder-url').value.trim();
+            const apiKey = document.getElementById('sync-api-key').value.trim();
+            const statusMsg = document.getElementById('sync-status-msg');
+            const syncBtn = document.getElementById('btn-start-sync');
+
+            if (!urlInput || !apiKey) {
+                alert("Por favor, preencha o link da pasta e forneça sua Chave de API.");
+                return;
+            }
+
+            const folderId = extractFolderId(urlInput);
+            if (!folderId) {
+                alert("URL inválida. Não foi possível identificar o ID da pasta do Google Drive.");
+                return;
+            }
+
+            // Salva as configurações de conexão para reuso seguro
+            db.collection("settings").doc("drive_config").set({
+                folderUrl: urlInput,
+                apiKey: apiKey
+            }, { merge: true }).catch(err => console.warn("Falha ao salvar preferências de pasta:", err));
+
+            statusMsg.style.display = "block";
+            statusMsg.style.color = "var(--text-main)";
+            statusMsg.textContent = "Conectando ao Google Drive e listando arquivos...";
+            syncBtn.disabled = true;
+
+            try {
+                // Solicita os arquivos da pasta que não sejam pastas internas e que não estejam na lixeira
+                const apiURL = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+mimeType!='application/vnd.google-apps.folder'+and+trashed=false&fields=files(id,name,webViewLink)&key=${apiKey}`;
+                
+                const response = await fetch(apiURL);
+                if (!response.ok) {
+                    const errorDetails = await response.json().catch(() => ({}));
+                    throw new Error(errorDetails.error?.message || `Servidor retornou status HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                const driveFiles = data.files || [];
+
+                if (driveFiles.length === 0) {
+                    statusMsg.style.color = "#fbbf24";
+                    statusMsg.textContent = "A pasta está vazia ou não contém arquivos legíveis.";
+                    syncBtn.disabled = false;
+                    return;
+                }
+
+                let importCount = 0;
+
+                for (const file of driveFiles) {
+                    const fileLink = file.webViewLink || `https://drive.google.com/open?id=${file.id}`;
+                    
+                    // Compara se o arquivo já foi catalogado comparando IDs ou títulos
+                    const alreadyExists = videosArray.some(vid => {
+                        const existingUrl = vid.driveUrl || '';
+                        return existingUrl.includes(file.id) || vid.title.trim() === file.name.trim();
+                    });
+
+                    if (!alreadyExists) {
+                        await db.collection("videos").add({
+                            title: file.name,
+                            driveUrl: fileLink,
+                            desc: "Vídeo importado automaticamente via sincronização do Google Drive.",
+                            finalUrl: null,
+                            status: 'todo',
+                            createdAt: new Date().toISOString()
+                        });
+                        importCount++;
+                    }
+                }
+
+                statusMsg.style.color = "var(--accent)";
+                statusMsg.textContent = `Sincronização concluída. ${importCount} novo(s) vídeo(s) importado(s) para a lista "A Fazer".`;
+            } catch (err) {
+                console.error("Falha na sincronização com o Drive:", err);
+                statusMsg.style.color = "#f87171";
+                statusMsg.textContent = `Erro ao sincronizar: ${err.message}`;
+            } finally {
+                syncBtn.disabled = false;
             }
         }
     </script>
