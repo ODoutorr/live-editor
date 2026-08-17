@@ -715,7 +715,7 @@
         </div>
     </div>
 
-    <!-- Modal Configurações Globais (Drive + Webhook Discord Compartilhado) -->
+    <!-- Modal Configurações Globais (Drive + Webhook Discord) -->
     <div class="modal-overlay" id="settings-modal">
         <div class="modal">
             <h2 class="modal-title">Configurações do Painel</h2>
@@ -726,7 +726,7 @@
                     <label for="sync-webhook-url">URL do Webhook do Discord</label>
                     <input type="password" id="sync-webhook-url" placeholder="https://discord.com/api/webhooks/...">
                     <small style="color: var(--text-muted); font-size: 10px; margin-top: 4px; display: block;">
-                        Salvo de forma compartilhada e segura no Firestore. Protegido contra buscas públicas no GitHub.
+                        Salvo de forma compartilhada no Firestore. Se as regras do Firestore bloquearem, salvará localmente por segurança.
                     </small>
                 </div>
             </div>
@@ -782,10 +782,10 @@
         // Estado local do tracker para atualizações instantâneas (Otimistas)
         let localTrackerState = { count: 0, total: 8 };
 
-        // Variável global para armazenar o Webhook compartilhado carregado do Firestore
+        // Variável global para armazenar o Webhook compartilhado do banco de dados
         let sharedWebhookUrl = "";
 
-        // Garante valores mínimos no LocalStorage para o fallback offline
+        // Garante valores mínimos no LocalStorage para o fallback offline/local
         if (localStorage.getItem("accumulated_tracker_count") === null) {
             localStorage.setItem("accumulated_tracker_count", "0");
         }
@@ -793,7 +793,7 @@
             localStorage.setItem("accumulated_tracker_total", "8");
         }
 
-        // Recupera o webhook ativo (prioriza o compartilhado do Firestore, senão pega do localStorage)
+        // Recupera o webhook ativo do banco de dados (Firestore) com fallback para o localStorage local
         function getDiscordWebhook() {
             return sharedWebhookUrl || localStorage.getItem("discord_webhook_url") || "";
         }
@@ -812,17 +812,43 @@
             );
         }
 
-        // --- CARREGAMENTO EM TEMPO REAL DAS CONFIGURAÇÕES COMPARTILHADAS (DRIVE + DISCORD) ---
+        // --- CARREGAMENTO EM TEMPO REAL DAS CONFIGURAÇÕES DO BANCO ---
         db.collection("settings").doc("drive_config").onSnapshot((doc) => {
             if (doc.exists) {
                 const data = doc.data();
                 sharedWebhookUrl = data.discordWebhookUrl || "";
-                if (data.folderUrl) document.getElementById('sync-folder-url').value = data.folderUrl;
-                if (data.apiKey) document.getElementById('sync-api-key').value = data.apiKey;
-                if (data.discordWebhookUrl) document.getElementById('sync-webhook-url').value = data.discordWebhookUrl;
+                if (data.folderUrl) {
+                    document.getElementById('sync-folder-url').value = data.folderUrl;
+                    localStorage.setItem("google_drive_folder_url", data.folderUrl);
+                }
+                if (data.apiKey) {
+                    document.getElementById('sync-api-key').value = data.apiKey;
+                    localStorage.setItem("google_drive_api_key", data.apiKey);
+                }
+                if (data.discordWebhookUrl) {
+                    document.getElementById('sync-webhook-url').value = data.discordWebhookUrl;
+                    localStorage.setItem("discord_webhook_url", data.discordWebhookUrl);
+                }
+            } else {
+                // Caso o documento não exista no banco de dados, tenta recuperar do armazenamento local do navegador
+                const localFolder = localStorage.getItem("google_drive_folder_url") || "";
+                const localApiKey = localStorage.getItem("google_drive_api_key") || "";
+                const localWebhook = localStorage.getItem("discord_webhook_url") || "";
+
+                if (localFolder) document.getElementById('sync-folder-url').value = localFolder;
+                if (localApiKey) document.getElementById('sync-api-key').value = localApiKey;
+                if (localWebhook) document.getElementById('sync-webhook-url').value = localWebhook;
             }
         }, (err) => {
-            console.warn("Aguardando gravação das configurações compartilhadas:", err);
+            console.warn("Acesso ao Firestore para drive_config bloqueado. Usando armazenamento local do navegador:", err.message);
+            // Fallback imediato para modo local se houver restrição de segurança no banco
+            const localFolder = localStorage.getItem("google_drive_folder_url") || "";
+            const localApiKey = localStorage.getItem("google_drive_api_key") || "";
+            const localWebhook = localStorage.getItem("discord_webhook_url") || "";
+
+            if (localFolder) document.getElementById('sync-folder-url').value = localFolder;
+            if (localApiKey) document.getElementById('sync-api-key').value = localApiKey;
+            if (localWebhook) document.getElementById('sync-webhook-url').value = localWebhook;
         });
 
         // --- SISTEMA DE META ACUMULADA ---
@@ -839,7 +865,7 @@
                 localStorage.setItem("accumulated_tracker_total", total.toString());
             } else {
                 trackerRef.set({ count: 0, total: 8 }).catch(err => {
-                    console.warn("Erro ao criar documento de configuração inicial no Firestore, usando local:", err);
+                    console.warn("Regras do Firebase bloqueiam gravação de meta inicial, usando local:", err);
                 });
                 const localCount = parseInt(localStorage.getItem("accumulated_tracker_count") || "0", 10);
                 const localTotal = parseInt(localStorage.getItem("accumulated_tracker_total") || "8", 10);
@@ -870,7 +896,7 @@
                     sendDiscordNotification(oldCount, newCount, total);
                 })
                 .catch((err) => {
-                    console.warn("Firestore inacessível. O progresso foi mantido apenas localmente:", err);
+                    console.warn("Firestore bloqueado. O progresso foi mantido apenas no navegador local:", err);
                 });
         }
 
@@ -891,7 +917,7 @@
                         sendDiscordQuotaNotification(oldTotal, newTotal);
                     })
                     .catch((err) => {
-                        console.warn("Firestore inacessível. Nova cota salva apenas localmente:", err);
+                        console.warn("Firestore bloqueado. Nova cota salva apenas localmente:", err);
                     });
             }
         }
@@ -1181,16 +1207,18 @@
             settingsModal.classList.remove('active');
         }
 
-        // Salva as configurações compartilhadas no Firestore de forma 100% segura contra scanners do GitHub
+        // Salva as configurações compartilhadas no Firestore com fallback resiliente para LocalStorage se houver bloqueio de permissão
         function saveSettingsOnly() {
             const webhookVal = document.getElementById('sync-webhook-url').value.trim();
             const folderVal = document.getElementById('sync-folder-url').value.trim();
             const apiKeyVal = document.getElementById('sync-api-key').value.trim();
 
-            // Salva backup na máquina local por segurança
+            // Salva preventivamente no navegador (Backup local imediato)
             localStorage.setItem("discord_webhook_url", webhookVal);
+            localStorage.setItem("google_drive_folder_url", folderVal);
+            localStorage.setItem("google_drive_api_key", apiKeyVal);
 
-            // Escreve as preferências compartilhadas e confidenciais no Firestore
+            // Tenta propagar remotamente para compartilhamento com o editor
             db.collection("settings").doc("drive_config").set({
                 folderUrl: folderVal,
                 apiKey: apiKeyVal,
@@ -1200,11 +1228,16 @@
                 const statusMsg = document.getElementById('sync-status-msg');
                 statusMsg.style.display = "block";
                 statusMsg.style.color = "var(--accent)";
-                statusMsg.textContent = "Ajustes salvos e compartilhados com sucesso!";
+                statusMsg.textContent = "Ajustes salvos e compartilhados no Firestore!";
                 setTimeout(() => { closeSettingsModal(); }, 1200);
             })
             .catch(err => {
-                alert("Erro ao gravar dados compartilhados no servidor: " + err.message);
+                console.warn("Firestore bloqueado por Regras de Segurança. Ajustes mantidos localmente no navegador:", err);
+                const statusMsg = document.getElementById('sync-status-msg');
+                statusMsg.style.display = "block";
+                statusMsg.style.color = "#fbbf24";
+                statusMsg.textContent = "Salvo localmente! (Firestore bloqueou o compartilhamento). Ajuste as 'Rules' se quiser compartilhar.";
+                setTimeout(() => { closeSettingsModal(); }, 2500);
             });
         }
 
@@ -1279,13 +1312,18 @@
                 return;
             }
 
-            // Salva as credenciais do editor de forma integrada antes de prosseguir
+            // Salva cópia preventiva de configurações
             localStorage.setItem("discord_webhook_url", webhookVal);
+            localStorage.setItem("google_drive_folder_url", urlInput);
+            localStorage.setItem("google_drive_api_key", apiKey);
+
             db.collection("settings").doc("drive_config").set({
                 folderUrl: urlInput,
                 apiKey: apiKey,
                 discordWebhookUrl: webhookVal
-            }, { merge: true }).catch(err => console.warn("Falha ao salvar preferências de pasta no banco:", err));
+            }, { merge: true }).catch(err => {
+                console.warn("Falha ao salvar preferências de pasta remotamente no banco:", err.message);
+            });
 
             statusMsg.style.display = "block";
             statusMsg.style.color = "var(--text-main)";
