@@ -386,6 +386,22 @@
             filter: drop-shadow(0 0 5px rgba(255, 193, 7, 0.3));
         }
 
+        /* Badge Especial para arquivos Compactados (RAR/ZIP) */
+        .link-badge.archive-pack {
+            border-color: rgba(236, 72, 153, 0.2);
+            background-color: rgba(236, 72, 153, 0.05);
+        }
+
+        .link-badge.archive-pack:hover {
+            background-color: rgba(236, 72, 153, 0.15);
+            border-color: rgba(236, 72, 153, 0.4);
+        }
+
+        .link-badge.archive-pack i {
+            color: #ec4899;
+            filter: drop-shadow(0 0 5px rgba(236, 72, 153, 0.4));
+        }
+
         .link-badge.final {
             border-color: rgba(16, 185, 129, 0.2);
             background-color: rgba(16, 185, 129, 0.05);
@@ -990,13 +1006,19 @@
                 const safeDriveUrl = escapeHTML(video.driveUrl);
                 const safeFinalUrl = escapeHTML(video.finalUrl);
 
+                // Detecta se é arquivo compactado para mudar layout do link do Drive
+                const isArchive = safeTitle.toLowerCase().endsWith('.rar') || safeTitle.toLowerCase().endsWith('.zip') || safeTitle.toLowerCase().endsWith('.7z');
+                const driveBadgeIcon = isArchive ? 'fa-solid fa-file-zipper' : 'fa-brands fa-google-drive';
+                const driveBadgeText = isArchive ? 'Baixar Pacote RAR/ZIP' : 'Baixar Bruto';
+                const driveBadgeClass = isArchive ? 'archive-pack' : 'drive';
+
                 const cardHTML = `
                     <div class="card" draggable="true" ondragstart="dragStart(event, '${video.id}')" id="card-${video.id}">
                         <h3 class="card-title">${safeTitle}</h3>
                         <p class="card-desc">${safeDesc}</p>
                         <div class="card-links">
-                            <a href="${safeDriveUrl}" target="_blank" class="link-badge drive" rel="noopener noreferrer">
-                                <i class="fa-brands fa-google-drive"></i> Baixar Bruto
+                            <a href="${safeDriveUrl}" target="_blank" class="link-badge ${driveBadgeClass}" rel="noopener noreferrer">
+                                <i class="${driveBadgeIcon}"></i> ${driveBadgeText}
                             </a>
                             ${safeFinalUrl ? `
                                 <a href="${safeFinalUrl}" target="_blank" class="link-badge final" rel="noopener noreferrer">
@@ -1132,128 +1154,3 @@
                 db.collection("videos").doc(id).update({
                     title: title,
                     driveUrl: driveUrl,
-                    desc: desc,
-                    finalUrl: finalUrl || null
-                }).then(() => {
-                    closeModal();
-                }).catch((err) => {
-                    console.error("Erro ao atualizar o card de vídeo:", err);
-                });
-            } else {
-                db.collection("videos").add({
-                    title: title,
-                    driveUrl: driveUrl,
-                    desc: desc,
-                    finalUrl: null,
-                    status: 'todo',
-                    createdAt: new Date().toISOString()
-                }).then(() => {
-                    closeModal();
-                }).catch((err) => {
-                    console.error("Erro ao registrar novo vídeo no Firestore:", err);
-                });
-            }
-        }
-
-        function deleteVideoFromModal() {
-            const id = document.getElementById('video-id').value;
-            if (id && confirm("Deseja deletar este projeto permanentemente?")) {
-                db.collection("videos").doc(id).delete().then(() => {
-                    closeModal();
-                }).catch((err) => {
-                    console.error("Erro ao deletar o card de vídeo:", err);
-                });
-            }
-        }
-
-        // --- INTEGRAÇÃO COM A API DO GOOGLE DRIVE ---
-        function extractFolderId(url) {
-            const matches = url.match(/folders\/([a-zA-Z0-9-_]+)/);
-            return matches ? matches[1] : null;
-        }
-
-        async function startGoogleDriveSync() {
-            const urlInput = document.getElementById('sync-folder-url').value.trim();
-            const apiKey = document.getElementById('sync-api-key').value.trim();
-            const statusMsg = document.getElementById('sync-status-msg');
-            const syncBtn = document.getElementById('btn-start-sync');
-
-            if (!urlInput || !apiKey) {
-                alert("Por favor, preencha o link da pasta e forneça sua Chave de API.");
-                return;
-            }
-
-            const folderId = extractFolderId(urlInput);
-            if (!folderId) {
-                alert("URL inválida. Não foi possível identificar o ID da pasta do Google Drive.");
-                return;
-            }
-
-            // Salva as configurações de conexão para reuso seguro
-            db.collection("settings").doc("drive_config").set({
-                folderUrl: urlInput,
-                apiKey: apiKey
-            }, { merge: true }).catch(err => console.warn("Falha ao salvar preferências de pasta:", err));
-
-            statusMsg.style.display = "block";
-            statusMsg.style.color = "var(--text-main)";
-            statusMsg.textContent = "Conectando ao Google Drive e listando arquivos...";
-            syncBtn.disabled = true;
-
-            try {
-                // Solicita os arquivos da pasta que não sejam pastas internas e que não estejam na lixeira
-                const apiURL = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+mimeType!='application/vnd.google-apps.folder'+and+trashed=false&fields=files(id,name,webViewLink)&key=${apiKey}`;
-                
-                const response = await fetch(apiURL);
-                if (!response.ok) {
-                    const errorDetails = await response.json().catch(() => ({}));
-                    throw new Error(errorDetails.error?.message || `Servidor retornou status HTTP ${response.status}`);
-                }
-
-                const data = await response.json();
-                const driveFiles = data.files || [];
-
-                if (driveFiles.length === 0) {
-                    statusMsg.style.color = "#fbbf24";
-                    statusMsg.textContent = "A pasta está vazia ou não contém arquivos legíveis.";
-                    syncBtn.disabled = false;
-                    return;
-                }
-
-                let importCount = 0;
-
-                for (const file of driveFiles) {
-                    const fileLink = file.webViewLink || `https://drive.google.com/open?id=${file.id}`;
-                    
-                    // Compara se o arquivo já foi catalogado comparando IDs ou títulos
-                    const alreadyExists = videosArray.some(vid => {
-                        const existingUrl = vid.driveUrl || '';
-                        return existingUrl.includes(file.id) || vid.title.trim() === file.name.trim();
-                    });
-
-                    if (!alreadyExists) {
-                        await db.collection("videos").add({
-                            title: file.name,
-                            driveUrl: fileLink,
-                            desc: "Vídeo importado automaticamente via sincronização do Google Drive.",
-                            finalUrl: null,
-                            status: 'todo',
-                            createdAt: new Date().toISOString()
-                        });
-                        importCount++;
-                    }
-                }
-
-                statusMsg.style.color = "var(--accent)";
-                statusMsg.textContent = `Sincronização concluída. ${importCount} novo(s) vídeo(s) importado(s) para a lista "A Fazer".`;
-            } catch (err) {
-                console.error("Falha na sincronização com o Drive:", err);
-                statusMsg.style.color = "#f87171";
-                statusMsg.textContent = `Erro ao sincronizar: ${err.message}`;
-            } finally {
-                syncBtn.disabled = false;
-            }
-        }
-    </script>
-</body>
-</html>
