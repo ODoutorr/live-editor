@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Doc's Edit</title>
+    <title>PAINEL EDITOR ODOUTORR</title>
     <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
@@ -61,22 +61,24 @@
         .logo-area {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 14px;
         }
 
         .logo-area i {
             color: var(--accent);
-            font-size: 26px;
-            filter: drop-shadow(0 0 12px var(--accent-glow));
+            font-size: 28px;
+            filter: drop-shadow(0 0 15px var(--accent));
         }
 
         .logo-area h1 {
-            font-size: 22px;
-            font-weight: 700;
-            letter-spacing: 0.8px;
-            background: linear-gradient(135deg, #fff 30%, #a7f3d0 100%);
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            background: linear-gradient(135deg, #ffffff 40%, #10b981 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5));
         }
 
         /* Widget de Meta Mensal no Header */
@@ -599,7 +601,7 @@
     <header>
         <div class="logo-area">
             <i class="fa-solid fa-clapperboard"></i>
-            <h1>Doc's Edit</h1>
+            <h1>PAINEL EDITOR ODOUTORR</h1>
         </div>
 
         <!-- Widget de Meta Mensal no topo direito -->
@@ -1117,6 +1119,7 @@
             }
         }
 
+        // Modificado para disparar animação de hover ao arrastar cards
         function allowDrop(ev) {
             ev.preventDefault();
             ev.currentTarget.classList.add('drag-over');
