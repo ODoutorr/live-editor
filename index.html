@@ -606,7 +606,7 @@
         <div class="monthly-tracker">
             <div class="tracker-info">
                 <div class="tracker-title">
-                    Saldo Acumulado <i class="fa-brands fa-discord" title="Notifica no Discord a cada alteração"></i>
+                    Saldo Acumulado <i class="fa-brands fa-discord" title="Notificações sincronizadas no painel"></i>
                 </div>
                 <div class="tracker-count"><span id="tracker-current">0</span> / <span id="tracker-total">8</span> Reels</div>
                 <div class="progress-bar-bg">
@@ -615,8 +615,8 @@
                 <div class="tracker-alert" id="tracker-alert-msg"></div>
             </div>
             <div class="tracker-controls">
-                <button class="btn-tracker" onclick="openDriveSyncModal()" title="Sincronizar com Google Drive">
-                    <i class="fa-brands fa-google-drive"></i>
+                <button class="btn-tracker" onclick="openSettingsModal()" title="Configurações e Sincronização">
+                    <i class="fa-solid fa-gear"></i>
                 </button>
                 <button class="btn-tracker" onclick="changeTrackerCount(-1)" title="Remover 1 entregue">
                     <i class="fa-solid fa-minus"></i>
@@ -715,25 +715,42 @@
         </div>
     </div>
 
-    <!-- Modal Sincronização Google Drive -->
-    <div class="modal-overlay" id="drive-sync-modal">
+    <!-- Modal Configurações Globais (Drive + Webhook Discord Compartilhado) -->
+    <div class="modal-overlay" id="settings-modal">
         <div class="modal">
-            <h2 class="modal-title">Sincronizar Google Drive</h2>
-            <div class="form-group">
-                <label for="sync-folder-url">Link da Pasta Compartilhada do Google Drive</label>
-                <input type="url" id="sync-folder-url" placeholder="https://drive.google.com/drive/folders/..." required>
+            <h2 class="modal-title">Configurações do Painel</h2>
+            
+            <div style="border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 20px; margin-bottom: 20px;">
+                <h3 style="font-size: 13px; text-transform: uppercase; color: var(--accent); margin-bottom: 15px; letter-spacing: 0.5px;">Integração Discord</h3>
+                <div class="form-group">
+                    <label for="sync-webhook-url">URL do Webhook do Discord</label>
+                    <input type="password" id="sync-webhook-url" placeholder="https://discord.com/api/webhooks/...">
+                    <small style="color: var(--text-muted); font-size: 10px; margin-top: 4px; display: block;">
+                        Salvo de forma compartilhada e segura no Firestore. Protegido contra buscas públicas no GitHub.
+                    </small>
+                </div>
             </div>
-            <div class="form-group">
-                <label for="sync-api-key">Chave de API do Google Cloud (Necessária)</label>
-                <input type="password" id="sync-api-key" placeholder="AIzaSy..." required>
-                <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block;">
-                    A pasta do Drive precisa estar configurada com acesso de leitura pública ("Qualquer pessoa com o link").
-                </small>
+
+            <div>
+                <h3 style="font-size: 13px; text-transform: uppercase; color: var(--accent); margin-bottom: 15px; letter-spacing: 0.5px;">Sincronização Google Drive</h3>
+                <div class="form-group">
+                    <label for="sync-folder-url">Link da Pasta do Google Drive</label>
+                    <input type="url" id="sync-folder-url" placeholder="https://drive.google.com/drive/folders/...">
+                </div>
+                <div class="form-group">
+                    <label for="sync-api-key">Chave de API do Google Cloud</label>
+                    <input type="password" id="sync-api-key" placeholder="AIzaSy...">
+                </div>
             </div>
-            <div id="sync-status-msg" style="margin-bottom: 15px; font-size: 13.5px; color: var(--accent); display: none; line-height: 1.4;"></div>
+
+            <div id="sync-status-msg" style="margin-bottom: 15px; font-size: 13px; color: var(--accent); display: none; line-height: 1.4;"></div>
+            
             <div class="modal-buttons">
-                <button type="button" class="btn-cancel" onclick="closeDriveSyncModal()">Fechar</button>
-                <button type="button" class="btn-submit" id="btn-start-sync" onclick="startGoogleDriveSync()">Sincronizar Arquivos</button>
+                <button type="button" class="btn-cancel" onclick="closeSettingsModal()">Fechar</button>
+                <div class="modal-right-buttons">
+                    <button type="button" class="btn-submit" style="background-color: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1); color: var(--text-main);" onclick="saveSettingsOnly()">Salvar Ajustes</button>
+                    <button type="button" class="btn-submit" id="btn-start-sync" onclick="startGoogleDriveSync()">Sincronizar Arquivos</button>
+                </div>
             </div>
         </div>
     </div>
@@ -758,9 +775,6 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
-        // URL do Webhook do Discord
-        const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1529245113769787463/wjRHz40oJxbJd8aGnF4GxI32e9SoQP7tWM0otUgWraA-aMSjG4NcywE60fn9SBvpv754";
-
         // Armazenamento local dos cards
         let videosArray = [];
         let currentDragId = null;
@@ -768,12 +782,20 @@
         // Estado local do tracker para atualizações instantâneas (Otimistas)
         let localTrackerState = { count: 0, total: 8 };
 
+        // Variável global para armazenar o Webhook compartilhado carregado do Firestore
+        let sharedWebhookUrl = "";
+
         // Garante valores mínimos no LocalStorage para o fallback offline
         if (localStorage.getItem("accumulated_tracker_count") === null) {
             localStorage.setItem("accumulated_tracker_count", "0");
         }
         if (localStorage.getItem("accumulated_tracker_total") === null) {
             localStorage.setItem("accumulated_tracker_total", "8");
+        }
+
+        // Recupera o webhook ativo (prioriza o compartilhado do Firestore, senão pega do localStorage)
+        function getDiscordWebhook() {
+            return sharedWebhookUrl || localStorage.getItem("discord_webhook_url") || "";
         }
 
         // Sanitização de entradas contra vulnerabilidade XSS
@@ -789,6 +811,19 @@
                 }[tag] || tag)
             );
         }
+
+        // --- CARREGAMENTO EM TEMPO REAL DAS CONFIGURAÇÕES COMPARTILHADAS (DRIVE + DISCORD) ---
+        db.collection("settings").doc("drive_config").onSnapshot((doc) => {
+            if (doc.exists) {
+                const data = doc.data();
+                sharedWebhookUrl = data.discordWebhookUrl || "";
+                if (data.folderUrl) document.getElementById('sync-folder-url').value = data.folderUrl;
+                if (data.apiKey) document.getElementById('sync-api-key').value = data.apiKey;
+                if (data.discordWebhookUrl) document.getElementById('sync-webhook-url').value = data.discordWebhookUrl;
+            }
+        }, (err) => {
+            console.warn("Aguardando gravação das configurações compartilhadas:", err);
+        });
 
         // --- SISTEMA DE META ACUMULADA ---
         const trackerRef = db.collection("settings").doc("accumulated_tracker");
@@ -863,7 +898,8 @@
 
         // Notificações assíncronas do Discord Webhook
         async function sendDiscordNotification(oldCount, newCount, total) {
-            if (!DISCORD_WEBHOOK_URL) return;
+            const webhookUrl = getDiscordWebhook();
+            if (!webhookUrl) return;
             try {
                 const timeString = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
                 const isIncrease = newCount > oldCount;
@@ -884,7 +920,7 @@
                     }]
                 };
 
-                const res = await fetch(DISCORD_WEBHOOK_URL, {
+                const res = await fetch(webhookUrl, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload)
@@ -896,7 +932,8 @@
         }
 
         async function sendDiscordQuotaNotification(oldTotal, newTotal) {
-            if (!DISCORD_WEBHOOK_URL) return;
+            const webhookUrl = getDiscordWebhook();
+            if (!webhookUrl) return;
             try {
                 const timeString = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 
@@ -915,7 +952,7 @@
                     }]
                 };
 
-                const res = await fetch(DISCORD_WEBHOOK_URL, {
+                const res = await fetch(webhookUrl, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload)
@@ -1079,7 +1116,7 @@
 
         // --- GERENCIAMENTO DOS MODAIS ---
         const modal = document.getElementById('video-modal');
-        const driveSyncModal = document.getElementById('drive-sync-modal');
+        const settingsModal = document.getElementById('settings-modal');
 
         function openModal(mode, id = null) {
             modal.classList.add('active');
@@ -1121,24 +1158,54 @@
             modal.classList.remove('active');
         }
 
-        function openDriveSyncModal() {
-            driveSyncModal.classList.add('active');
+        function openSettingsModal() {
+            settingsModal.classList.add('active');
             document.getElementById('sync-status-msg').style.display = 'none';
             
-            // Tenta resgatar configurações salvas do Google Drive para poupar redigitação
+            // Popula os campos usando as variáveis centralizadas e compartilhadas
+            document.getElementById('sync-webhook-url').value = getDiscordWebhook();
+
             db.collection("settings").doc("drive_config").get().then((doc) => {
                 if (doc.exists) {
                     const data = doc.data();
                     if (data.folderUrl) document.getElementById('sync-folder-url').value = data.folderUrl;
                     if (data.apiKey) document.getElementById('sync-api-key').value = data.apiKey;
+                    if (data.discordWebhookUrl) document.getElementById('sync-webhook-url').value = data.discordWebhookUrl;
                 }
             }).catch(err => {
-                console.warn("Erro ao ler credenciais locais do Drive:", err);
+                console.warn("Erro ao ler credenciais compartilhadas do Drive:", err);
             });
         }
 
-        function closeDriveSyncModal() {
-            driveSyncModal.classList.remove('active');
+        function closeSettingsModal() {
+            settingsModal.classList.remove('active');
+        }
+
+        // Salva as configurações compartilhadas no Firestore de forma 100% segura contra scanners do GitHub
+        function saveSettingsOnly() {
+            const webhookVal = document.getElementById('sync-webhook-url').value.trim();
+            const folderVal = document.getElementById('sync-folder-url').value.trim();
+            const apiKeyVal = document.getElementById('sync-api-key').value.trim();
+
+            // Salva backup na máquina local por segurança
+            localStorage.setItem("discord_webhook_url", webhookVal);
+
+            // Escreve as preferências compartilhadas e confidenciais no Firestore
+            db.collection("settings").doc("drive_config").set({
+                folderUrl: folderVal,
+                apiKey: apiKeyVal,
+                discordWebhookUrl: webhookVal
+            }, { merge: true })
+            .then(() => {
+                const statusMsg = document.getElementById('sync-status-msg');
+                statusMsg.style.display = "block";
+                statusMsg.style.color = "var(--accent)";
+                statusMsg.textContent = "Ajustes salvos e compartilhados com sucesso!";
+                setTimeout(() => { closeSettingsModal(); }, 1200);
+            })
+            .catch(err => {
+                alert("Erro ao gravar dados compartilhados no servidor: " + err.message);
+            });
         }
 
         function handleFormSubmit(e) {
@@ -1154,3 +1221,133 @@
                 db.collection("videos").doc(id).update({
                     title: title,
                     driveUrl: driveUrl,
+                    desc: desc,
+                    finalUrl: finalUrl || null
+                }).then(() => {
+                    closeModal();
+                }).catch((err) => {
+                    console.error("Erro ao atualizar o card de vídeo:", err);
+                });
+            } else {
+                db.collection("videos").add({
+                    title: title,
+                    driveUrl: driveUrl,
+                    desc: desc,
+                    finalUrl: null,
+                    status: 'todo',
+                    createdAt: new Date().toISOString()
+                }).then(() => {
+                    closeModal();
+                }).catch((err) => {
+                    console.error("Erro ao registrar novo vídeo no Firestore:", err);
+                });
+            }
+        }
+
+        function deleteVideoFromModal() {
+            const id = document.getElementById('video-id').value;
+            if (id && confirm("Deseja deletar este projeto permanentemente?")) {
+                db.collection("videos").doc(id).delete().then(() => {
+                    closeModal();
+                }).catch((err) => {
+                    console.error("Erro ao deletar o card de vídeo:", err);
+                });
+            }
+        }
+
+        // --- INTEGRAÇÃO COM A API DO GOOGLE DRIVE ---
+        function extractFolderId(url) {
+            const matches = url.match(/folders\/([a-zA-Z0-9-_]+)/);
+            return matches ? matches[1] : null;
+        }
+
+        async function startGoogleDriveSync() {
+            const urlInput = document.getElementById('sync-folder-url').value.trim();
+            const apiKey = document.getElementById('sync-api-key').value.trim();
+            const webhookVal = document.getElementById('sync-webhook-url').value.trim();
+            const statusMsg = document.getElementById('sync-status-msg');
+            const syncBtn = document.getElementById('btn-start-sync');
+
+            if (!urlInput || !apiKey) {
+                alert("Por favor, preencha o link da pasta e forneça sua Chave de API do Google.");
+                return;
+            }
+
+            const folderId = extractFolderId(urlInput);
+            if (!folderId) {
+                alert("URL inválida. Não foi possível identificar o ID da pasta do Google Drive.");
+                return;
+            }
+
+            // Salva as credenciais do editor de forma integrada antes de prosseguir
+            localStorage.setItem("discord_webhook_url", webhookVal);
+            db.collection("settings").doc("drive_config").set({
+                folderUrl: urlInput,
+                apiKey: apiKey,
+                discordWebhookUrl: webhookVal
+            }, { merge: true }).catch(err => console.warn("Falha ao salvar preferências de pasta no banco:", err));
+
+            statusMsg.style.display = "block";
+            statusMsg.style.color = "var(--text-main)";
+            statusMsg.textContent = "Conectando ao Google Drive e listando arquivos...";
+            syncBtn.disabled = true;
+
+            try {
+                // Sincroniza aceitando .rar e .zip (filtra pastas no JS)
+                const apiURL = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+trashed=false&fields=files(id,name,webViewLink,mimeType)&key=${apiKey}`;
+                
+                const response = await fetch(apiURL);
+                if (!response.ok) {
+                    const errorDetails = await response.json().catch(() => ({}));
+                    throw new Error(errorDetails.error?.message || `Servidor retornou status HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                const allFiles = data.files || [];
+
+                // Exclui subpastas do Drive
+                const driveFiles = allFiles.filter(file => file.mimeType !== 'application/vnd.google-apps.folder');
+
+                if (driveFiles.length === 0) {
+                    statusMsg.style.color = "#fbbf24";
+                    statusMsg.textContent = "A pasta está vazia ou não contém arquivos legíveis (como vídeos ou pacotes .rar).";
+                    syncBtn.disabled = false;
+                    return;
+                }
+
+                let importCount = 0;
+
+                for (const file of driveFiles) {
+                    const fileLink = file.webViewLink || `https://drive.google.com/open?id=${file.id}`;
+                    
+                    const alreadyExists = videosArray.some(vid => {
+                        const existingUrl = vid.driveUrl || '';
+                        return existingUrl.includes(file.id) || vid.title.trim() === file.name.trim();
+                    });
+
+                    if (!alreadyExists) {
+                        await db.collection("videos").add({
+                            title: file.name,
+                            driveUrl: fileLink,
+                            desc: "Vídeo importado automaticamente via sincronização do Google Drive.",
+                            finalUrl: null,
+                            status: 'todo',
+                            createdAt: new Date().toISOString()
+                        });
+                        importCount++;
+                    }
+                }
+
+                statusMsg.style.color = "var(--accent)";
+                statusMsg.textContent = `Sincronização concluída. ${importCount} novo(s) arquivo(s) (incluindo .rar) importado(s) para a lista "A Fazer".`;
+            } catch (err) {
+                console.error("Falha na sincronização com o Drive:", err);
+                statusMsg.style.color = "#f87171";
+                statusMsg.textContent = `Erro ao sincronizar: ${err.message}`;
+            } finally {
+                syncBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
